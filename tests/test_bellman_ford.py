@@ -131,3 +131,41 @@ def test_physical_corridor_has_no_negative_cycles():
     # Johnson potentials must succeed without raising NegativeCycleError
     potentials = johnson_potentials(graph, weight_attr="energy_kwh")
     assert len(potentials) == len(snapshot.nodes)
+
+
+def test_bellman_ford_unreachable_nodes_and_path_reconstruction():
+    """Verify unreachable nodes return inf distance, None pred, and empty path."""
+    graph = RoadGraph()
+    graph.add_node(RoadNode(id=1, lat=0.0, lon=0.0, elevation_m=0.0))
+    graph.add_node(RoadNode(id=2, lat=0.0, lon=0.0, elevation_m=0.0))
+    graph.add_node(RoadNode(id=3, lat=0.0, lon=0.0, elevation_m=0.0))  # disconnected island
+    graph.add_edge(RoadEdge(u=1, v=2, length_m=1000.0, time_s=60.0, energy_kwh=1.5))
+
+    dist, pred = bellman_ford(graph, source=1, weight_attr="energy_kwh")
+    assert dist[2] == 1.5
+    assert dist[3] == float("inf")
+    assert pred[3] is None
+
+    # Path to reachable node
+    path_1_to_2 = reconstruct_path(pred, target=2)
+    assert path_1_to_2 == [1, 2]
+
+    # Path to unreachable node
+    path_1_to_3 = reconstruct_path(pred, target=3)
+    assert path_1_to_3 == []
+
+
+def test_johnson_vs_bellman_ford_on_synthetic_corridor():
+    """Verify Johnson's algorithm distances match Bellman-Ford on the full synthetic corridor."""
+    snapshot = generate_synthetic_corridor(seed=314)
+    graph = RoadGraph.from_snapshot(snapshot)
+
+    terminals = [0, 10, 25, 40]
+    johnson_dists = johnson_shortest_paths(graph, terminals=terminals, weight_attr="time_s")
+
+    for src in terminals:
+        bf_dist, _ = bellman_ford(graph, source=src, weight_attr="time_s")
+        for dst in [5, 15, 30, 45]:
+            if bf_dist[dst] != float("inf"):
+                assert johnson_dists[src][dst] == pytest.approx(bf_dist[dst], rel=1e-4)
+

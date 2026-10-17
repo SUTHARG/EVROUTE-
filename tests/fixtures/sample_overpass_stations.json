@@ -1,0 +1,56 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API",
+  "elements": [
+    {
+      "type": "node",
+      "id": 1001,
+      "lat": 18.9950,
+      "lon": 73.1200,
+      "tags": {
+        "amenity": "charging_station",
+        "name": "Tata Power Panvel Fast Charger",
+        "operator": "Tata Power",
+        "capacity:output": "60 kW",
+        "socket:type2_combo": "2"
+      }
+    },
+    {
+      "type": "node",
+      "id": 1002,
+      "lat": 18.7500,
+      "lon": 73.4100,
+      "tags": {
+        "amenity": "charging_station",
+        "name": "Jio-bp pulse Expressway Mall",
+        "operator": "Jio-bp",
+        "capacity:output": "120 kW",
+        "socket:type2_combo": "2"
+      }
+    },
+    {
+      "type": "node",
+      "id": 1003,
+      "lat": 18.6000,
+      "lon": 73.7500,
+      "tags": {
+        "amenity": "charging_station",
+        "name": "Unknown Local Station",
+        "operator": "Independent"
+      }
+    },
+    {
+      "type": "node",
+      "id": 1004,
+      "lat": 18.7000,
+      "lon": 73.5000,
+      "tags": {
+        "amenity": "charging_station",
+        "name": "Incompatible Chademo Hub",
+        "operator": "ChademoNet",
+        "capacity:output": "50 kW",
+        "socket:chademo": "1"
+      }
+    }
+  ]
+}

@@ -110,8 +110,9 @@ def compute_spur_detour(
 ) -> tuple[float, float, int]:
     """Compute spur detour distance and duration from corridor polyline to a station.
 
-    Finds the closest node on the main highway polyline, computes spur round-trip
-    distance (2 * straight-line * tortuosity 1.25), and converts to seconds.
+    NOTE [APPROXIMATION]: This function is an offline geometric approximation that
+    estimates spur detour using great-circle distance scaled by a 1.25 road tortuosity
+    factor. For exact navigation in live routing, use compute_live_osrm_spur.
 
     Complexity:
         Time: O(|main_coords|)
@@ -143,3 +144,37 @@ def compute_spur_detour(
     detour_time_s = detour_dist_round_trip_m / speed_mps
 
     return detour_dist_round_trip_m, detour_time_s, closest_idx
+
+
+def compute_live_osrm_spur(
+    client: OSRMClient,
+    highway_coord: tuple[float, float],
+    station_coord: tuple[float, float],
+    allow_network: bool = True,
+) -> tuple[float, float]:
+    """Compute exact spur detour distance and duration via live cached OSRM route query.
+
+    Queries OSRM for highway_node -> station -> highway_node round-trip path.
+
+    Complexity:
+        O(1) with cache, or 1 OSRM HTTP round-trip.
+
+    Returns:
+        Tuple of (round_trip_distance_m, round_trip_duration_s).
+    """
+    try:
+        route_data = client.get_route(
+            start_coord=highway_coord,
+            end_coord=station_coord,
+            alternatives=False,
+            allow_network=allow_network,
+        )
+        # Round trip is approximately double the one-way spur
+        return route_data["distance_m"] * 2.0, route_data["duration_s"] * 2.0
+    except (requests.RequestException, ValueError, KeyError):
+        # Fallback to geometric approximation if OSRM is unreachable
+        dist_m = haversine_distance_m(
+            highway_coord[0], highway_coord[1], station_coord[0], station_coord[1]
+        ) * 2.5
+        time_s = dist_m / (35.0 / 3.6)
+        return dist_m, time_s

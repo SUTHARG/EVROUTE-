@@ -295,6 +295,7 @@ def johnson_shortest_paths(
 def reconstruct_path(
     predecessors: dict[int, int | None],
     target: int,
+    source: int | None = None,
 ) -> list[int]:
     """Reconstruct vertex sequence from source to target using predecessor map.
 
@@ -305,6 +306,7 @@ def reconstruct_path(
     Args:
         predecessors: Predecessor map from shortest path search.
         target: Target destination vertex ID.
+        source: Optional source vertex ID to verify reachability.
 
     Returns:
         List of vertex IDs from source to target, or empty list if target unreachable.
@@ -325,4 +327,12 @@ def reconstruct_path(
         curr = predecessors[curr]
 
     path.reverse()
+
+    if source is not None:
+        if not path or path[0] != source:
+            return []
+    elif len(path) == 1 and predecessors.get(target) is None:
+        # If target has no predecessor and source wasn't explicitly matching, unreachable
+        return []
+
     return path
