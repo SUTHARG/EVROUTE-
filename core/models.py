@@ -186,6 +186,9 @@ class Station(BaseModel):
     connector_assumed: bool = Field(
         False, description="Whether connector_types were imputed via fallback policy"
     )
+    source: str = Field(
+        "osm", description="Provenance source of charger data: 'osm', 'ocm', or 'synthetic'"
+    )
 
 
 class RoadNode(BaseModel):

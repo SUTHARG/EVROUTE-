@@ -18,6 +18,7 @@ from ingest.route import haversine_distance_m
 def compute_station_score(
     station: Station,
     detour_km: float = 0.5,
+    corridor_buffer_km: float = 5.0,
     w_rel: float = 0.35,
     w_amenity: float = 0.30,
     w_power: float = 0.25,
@@ -25,16 +26,17 @@ def compute_station_score(
 ) -> float:
     """Compute multi-attribute utility score for a charging station.
 
-    Score = w1 * reliability + w2 * amenity_score + w3 * (power / 150) - w4 * detour_km
+    Score = w1 * reliability + w2 * amenity_score + w3 * (power / 150) - w4 * (detour_km / buffer_km)
 
     Complexity: O(1).
     """
     power_norm = min(1.0, station.max_kw / 150.0)
+    detour_norm = min(1.0, max(0.0, detour_km / max(0.1, corridor_buffer_km)))
     score = (
         w_rel * station.reliability
         + w_amenity * station.amenity_score
         + w_power * power_norm
-        - w_detour * detour_km
+        - w_detour * detour_norm
     )
     return round(score, 4)
 

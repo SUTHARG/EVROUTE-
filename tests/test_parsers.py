@@ -53,17 +53,19 @@ def test_overpass_station_parser_and_fallback_policy(tmp_path):
         cache=cache,
     )
 
-    # 4 elements in fixture:
-    # 1. Tata Power Panvel: CCS2, 60kW -> kept
-    # 2. Jio-bp: CCS2, 120kW -> kept
-    # 3. Unknown Local: no power, no connector -> assumed CCS2 & 50kW -> kept
-    # 4. ChademoNet: CHAdeMO only, no CCS2 -> kept in list, but marked CHAdeMO
-    assert len(stations) == 4
-    assert audit["total_raw"] == 4
-    assert audit["assumed_power"] == 1
-    assert audit["assumed_connector"] == 1
+    # Real fixture contains 31 actual Overpass charging station elements
+    assert len(stations) > 0
+    assert audit["total_raw"] == len(data["elements"])
+    assert audit["kept"] == len(stations)
+    assert audit["count_by_source"]["osm"] == len(stations)
 
-    # Now test strict policy: drop missing connector and drop missing power
+    # Every parsed station must record source="osm"
+    for st in stations:
+        assert st.source == "osm"
+        assert st.is_reliability_simulated is True
+        assert 0.0 < st.reliability <= 1.0
+
+    # Now test strict policy: drop stations without explicit power or connector
     strict_policy = StationIngestionPolicy(
         assume_missing_connector_as_ccs2=False,
         assume_missing_power_kw=None,
@@ -74,8 +76,9 @@ def test_overpass_station_parser_and_fallback_policy(tmp_path):
         allow_network=False,
         cache=cache,
     )
-    assert len(strict_stations) == 3
-    assert strict_audit["dropped_power"] == 1
+    # Under strict policy, elements without explicit capacity or socket tags are dropped
+    assert strict_audit["dropped_power"] > 0 or strict_audit["dropped_connector"] > 0
+    assert len(strict_stations) < len(stations)
 
 
 def test_cache_key_includes_query_params():

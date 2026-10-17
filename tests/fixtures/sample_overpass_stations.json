@@ -1,55 +1,426 @@
 {
   "version": 0.6,
-  "generator": "Overpass API",
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-17T15:42:35Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
   "elements": [
     {
       "type": "node",
-      "id": 1001,
-      "lat": 18.9950,
-      "lon": 73.1200,
+      "id": 6116153836,
+      "lat": 18.567214,
+      "lon": 73.7719864,
       "tags": {
         "amenity": "charging_station",
-        "name": "Tata Power Panvel Fast Charger",
-        "operator": "Tata Power",
-        "capacity:output": "60 kW",
-        "socket:type2_combo": "2"
+        "brand": "PowerUP"
       }
     },
     {
       "type": "node",
-      "id": 1002,
-      "lat": 18.7500,
-      "lon": 73.4100,
+      "id": 9411828530,
+      "lat": 18.5071941,
+      "lon": 73.8037729,
       "tags": {
+        "access": "yes",
         "amenity": "charging_station",
-        "name": "Jio-bp pulse Expressway Mall",
-        "operator": "Jio-bp",
-        "capacity:output": "120 kW",
-        "socket:type2_combo": "2"
+        "brand": "Ather Energy",
+        "fee": "yes",
+        "operator": "Ather Energy"
       }
     },
     {
       "type": "node",
-      "id": 1003,
-      "lat": 18.6000,
-      "lon": 73.7500,
+      "id": 10013758817,
+      "lat": 18.6111535,
+      "lon": 73.7831554,
       "tags": {
+        "addr:street": "Kalewadi Phata-Auto Cluster BRTS Road",
         "amenity": "charging_station",
-        "name": "Unknown Local Station",
-        "operator": "Independent"
+        "brand": "Tata power",
+        "capacity": "2",
+        "covered": "no",
+        "fee": "yes",
+        "operator": "Tata power"
       }
     },
     {
       "type": "node",
-      "id": 1004,
-      "lat": 18.7000,
-      "lon": 73.5000,
+      "id": 10097434142,
+      "lat": 18.5095633,
+      "lon": 73.8147009,
       "tags": {
         "amenity": "charging_station",
-        "name": "Incompatible Chademo Hub",
-        "operator": "ChademoNet",
-        "capacity:output": "50 kW",
-        "socket:chademo": "1"
+        "brand": "Bolt",
+        "capacity": "8",
+        "operator": "Bolt",
+        "scooter": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10097434143,
+      "lat": 18.5105681,
+      "lon": 73.781902,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "Ather Energy",
+        "capacity": "1",
+        "operator": "Ather Energy",
+        "scooter": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10097460085,
+      "lat": 18.5189771,
+      "lon": 73.8304638,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "Ather Energy",
+        "operator": "Ather Energy",
+        "scooter": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10250046452,
+      "lat": 18.5536336,
+      "lon": 73.806562,
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "capacity": "2",
+        "operator": "Tata"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10290789663,
+      "lat": 18.5788787,
+      "lon": 73.7624887,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "Go Ego"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10615755147,
+      "lat": 18.5114349,
+      "lon": 73.7770341,
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "brand": "Bolt",
+        "capacity": "1",
+        "operator": "Trimurti Motors",
+        "scooter": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10671202586,
+      "lat": 18.5857278,
+      "lon": 73.7817517,
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "brand": "Shell",
+        "brand:en": "Shell",
+        "brand:mr": "\u0936\u0947\u0932",
+        "brand:wikidata": "Q110716465",
+        "capacity": "3",
+        "fee": "yes",
+        "operator": "Shell",
+        "operator:wikidata": "Q110716465"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10719100420,
+      "lat": 18.6170757,
+      "lon": 73.7673099,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "goEgo Charging Station",
+        "capacity": "1"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10797010207,
+      "lat": 18.5998693,
+      "lon": 73.7548665,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "Tata power",
+        "operator": "Tata power",
+        "socket:type2": "1"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10797010208,
+      "lat": 18.5995979,
+      "lon": 73.7548745,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "Tata power",
+        "operator": "Tata power",
+        "socket:type2_combo": "1"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10841782157,
+      "lat": 18.5887644,
+      "lon": 73.7827295,
+      "tags": {
+        "access": "yes",
+        "addr:floor": "G",
+        "amenity": "charging_station",
+        "branch": "Copacabana",
+        "brand": "Ather Energy",
+        "brand:en": "Ather Energy",
+        "brand:mr": "\u090f\u0925\u0930 \u090f\u0928\u0930\u094d\u091c\u0940",
+        "capacity": "1",
+        "covered": "no",
+        "fee": "yes",
+        "level": "0",
+        "operator": "Ather Energy",
+        "source": "survey;local knowledge"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10870849607,
+      "lat": 18.5906635,
+      "lon": 73.7457888,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "GoEgo",
+        "fee": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11005778506,
+      "lat": 18.5638072,
+      "lon": 73.8068573,
+      "tags": {
+        "access": "yes",
+        "addr:floor": "UB",
+        "amenity": "charging_station",
+        "brand": "Jio pulse",
+        "fee": "yes",
+        "level": "-1",
+        "source": "survey"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11033745938,
+      "lat": 18.5897559,
+      "lon": 73.7381716,
+      "tags": {
+        "amenity": "charging_station",
+        "brand": "Tata Power",
+        "brand:mr": "\u091f\u093e\u091f\u093e \u092a\u093e\u0935\u0930",
+        "capacity": "2",
+        "covered": "no",
+        "fee": "yes",
+        "source": "survey"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11217502924,
+      "lat": 18.5623306,
+      "lon": 73.8069355,
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "brand": "goEgo Charging Station",
+        "capacity": "5",
+        "operator": "Westend Mall"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11452082417,
+      "lat": 18.6347952,
+      "lon": 73.7990514,
+      "tags": {
+        "amenity": "charging_station"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12350373268,
+      "lat": 18.5857921,
+      "lon": 73.734433,
+      "tags": {
+        "access": "customers",
+        "amenity": "charging_station",
+        "brand": "EV Dock charging station",
+        "fee": "yes",
+        "operator": "EV Dock"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12350440058,
+      "lat": 18.5907601,
+      "lon": 73.7410354,
+      "tags": {
+        "access": "customers",
+        "amenity": "charging_station",
+        "brand": "shell",
+        "capacity": "30 kw",
+        "fee": "yes",
+        "operator": "Shell",
+        "operator:wikidata": "Q110716465"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12350467611,
+      "lat": 18.5781719,
+      "lon": 73.7368921,
+      "tags": {
+        "access": "customers",
+        "amenity": "charging_station",
+        "brand": "Bijlify",
+        "capacity": "20 kw",
+        "fee": "yes",
+        "operator": "Bijlify"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12458871181,
+      "lat": 18.5638929,
+      "lon": 73.8070465,
+      "tags": {
+        "access": "yes",
+        "addr:floor": "G",
+        "amenity": "charging_station",
+        "brand": "Statiq",
+        "capacity": "60",
+        "covered": "yes",
+        "fee": "yes",
+        "level": "0",
+        "network": "Statiq",
+        "operator": "Statiq",
+        "source": "local knowledge"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12473454969,
+      "lat": 18.5228186,
+      "lon": 73.8410529,
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "brand": "Bijlify",
+        "covered": "no",
+        "fee": "yes",
+        "source": "survey"
+      }
+    },
+    {
+      "type": "way",
+      "id": 359699641,
+      "center": {
+        "lat": 18.5912547,
+        "lon": 73.7488124
+      },
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station"
+      }
+    },
+    {
+      "type": "way",
+      "id": 360242628,
+      "center": {
+        "lat": 18.5882782,
+        "lon": 73.784882
+      },
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "capacity": "1"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1152420782,
+      "center": {
+        "lat": 18.6165794,
+        "lon": 73.7476226
+      },
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "brand": "Tata Power",
+        "capacity": "2",
+        "operator": "Tata Power"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1152421163,
+      "center": {
+        "lat": 18.6234031,
+        "lon": 73.7454767
+      },
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "brand": "Tata Power",
+        "capacity": "2"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1152424877,
+      "center": {
+        "lat": 18.5994671,
+        "lon": 73.7807696
+      },
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "capacity": "1"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1152427340,
+      "center": {
+        "lat": 18.5807735,
+        "lon": 73.8158088
+      },
+      "tags": {
+        "access": "yes",
+        "amenity": "charging_station",
+        "capacity": "1"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1222357597,
+      "center": {
+        "lat": 18.5794696,
+        "lon": 73.73858
+      },
+      "tags": {
+        "access": "private",
+        "amenity": "charging_station",
+        "capacity": "7"
       }
     }
   ]
