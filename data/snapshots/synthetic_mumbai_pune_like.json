@@ -1047,6 +1047,7 @@
     "kept_stations": 15,
     "dropped_connector": 0,
     "dropped_power": 0,
-    "assumed_defaults": 0
+    "assumed_defaults": 0,
+    "data_provenance": "synthetic"
   }
 }

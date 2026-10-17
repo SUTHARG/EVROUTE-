@@ -228,3 +228,114 @@ def test_reduced_charger_graph_fastest_and_eco_paths():
     # High departure levels must be feasible (float)
     assert edge.arrival_soc_table[20] is not None
     assert 0.10 <= edge.arrival_soc_table[20] <= 1.0
+
+
+def test_counterexample_greedy_filter_drops_optimal_station():
+    """Hand-built counterexample proving that greedy multi-attribute filtering can drop
+
+    the globally optimal station for time-minimizing trips (lambda=0).
+
+    Setup:
+    - st_fast: 150 kW DC fast charger, zero amenities (score = 0.565).
+    - st_slow_lounge: 25 kW DC charger, luxury amenities (score = 0.688).
+    - At score_threshold = 0.60, st_fast is dropped and st_slow_lounge is kept.
+    - Since st_slow_lounge bridges the corridor, st_fast is never reinstated.
+    - At lambda = 0 (pure time), the optimal plan uses st_fast (charging takes ~8 min).
+    - With filtering enabled, the planner is forced to use st_slow_lounge (charging takes ~48 min).
+    - Result: Filtered plan is strictly suboptimal (costs ~40 min more).
+    """
+    from core.models import CorridorSnapshot, RoadEdge, RoadNode, Trip
+    from core.planner import EVPlanner
+
+    car = PRESET_CARS["tata_nexon_ev_lr"]  # 40.5 kWh, usable 38.47 kWh
+
+    # Build simple 3-node road corridor: node 0 (0 km) -> node 1 (50 km) -> node 2 (100 km)
+    nodes = {
+        0: RoadNode(id=0, lat=19.00, lon=73.00, elevation_m=20.0),
+        1: RoadNode(id=1, lat=18.75, lon=73.30, elevation_m=20.0),
+        2: RoadNode(id=2, lat=18.52, lon=73.85, elevation_m=20.0),
+    }
+    # 50 km leg at 80 km/h takes 37.5 min = 2250 s, consumes ~7.5 kWh
+    edges = [
+        RoadEdge(u=0, v=1, length_m=50000.0, time_s=2250.0, energy_kwh=7.5),
+        RoadEdge(u=1, v=2, length_m=50000.0, time_s=2250.0, energy_kwh=7.5),
+    ]
+
+    st_fast = Station(
+        id="st_fast",
+        name="Ultra-Fast 150kW Depot",
+        lat=18.75,
+        lon=73.30,
+        road_node_id=1,
+        operator="FastPower",
+        max_kw=150.0,
+        connector_types=["CCS2"],
+        reliability=0.90,
+        amenity_score=0.0,
+        detour_time_s=0.0,
+        detour_distance_m=0.0,
+    )
+    st_slow_lounge = Station(
+        id="st_slow_lounge",
+        name="Slow 25kW Luxury Lounge",
+        lat=18.7501,
+        lon=73.3001,
+        road_node_id=1,
+        operator="LoungeCharge",
+        max_kw=25.0,
+        connector_types=["CCS2"],
+        reliability=0.99,
+        amenity_score=1.0,
+        detour_time_s=0.0,
+        detour_distance_m=0.0,
+    )
+
+    snapshot = CorridorSnapshot(
+        id="counterexample_corridor",
+        name="Filter Counterexample Corridor",
+        created_at="2026-10-17T00:00:00Z",
+        source_name="Origin",
+        destination_name="Destination",
+        source_node_id=0,
+        destination_node_id=2,
+        total_distance_km=100.0,
+        nodes=nodes,
+        edges=edges,
+        stations=[st_fast, st_slow_lounge],
+    )
+
+    trip = Trip(
+        snapshot_id=snapshot.id,
+        start_soc=0.35,  # 13.5 kWh: reaches station at km 50 (needs 7.5 kWh) but cannot reach destination without charging
+        reserve_soc=0.10,
+        stop_threshold_soc=0.35,
+        comfort_weight_lambda=0.0,  # Pure time objective
+        K=20,
+    )
+
+    planner = EVPlanner()
+
+    # 1. Unfiltered: planner considers both stations and chooses st_fast (150 kW)
+    plan_unfiltered = planner.plan(snapshot, car, trip, lambda_val=0.0, enable_filter=False)
+    assert plan_unfiltered.feasible is True
+    assert len(plan_unfiltered.stops) == 1
+    assert plan_unfiltered.stops[0].station_id == "st_fast"
+
+    # 2. Filtered with threshold=0.60: st_fast is dropped, st_slow_lounge is kept
+    plan_filtered = planner.plan(
+        snapshot,
+        car,
+        trip,
+        lambda_val=0.0,
+        enable_filter=True,
+        filter_score_threshold=0.60,
+    )
+    assert plan_filtered.feasible is True
+    assert len(plan_filtered.stops) == 1
+    assert plan_filtered.stops[0].station_id == "st_slow_lounge"
+
+    # Strict suboptimality gap: unfiltered plan finishes significantly faster!
+    cost_gap = plan_filtered.cost_J - plan_unfiltered.cost_J
+    assert cost_gap > 5.0  # Slow charger takes significantly longer to charge
+    print(f"Counterexample verified: Unfiltered={plan_unfiltered.cost_J:.2f} min vs Filtered={plan_filtered.cost_J:.2f} min (Gap={cost_gap:.2f} min)")
+

@@ -34951,7 +34951,7 @@
       "amenity_score": 1.0,
       "power_assumed": false,
       "connector_assumed": false,
-      "source": "manual",
+      "source": "unverified_illustrative",
       "road_node_id": null,
       "detour_distance_m": 0.0,
       "detour_time_s": 0.0,
@@ -34978,7 +34978,7 @@
       "amenity_score": 1.0,
       "power_assumed": false,
       "connector_assumed": false,
-      "source": "manual",
+      "source": "unverified_illustrative",
       "road_node_id": null,
       "detour_distance_m": 0.0,
       "detour_time_s": 0.0,
@@ -35005,7 +35005,7 @@
       "amenity_score": 1.0,
       "power_assumed": false,
       "connector_assumed": false,
-      "source": "manual",
+      "source": "unverified_illustrative",
       "road_node_id": null,
       "detour_distance_m": 0.0,
       "detour_time_s": 0.0,
@@ -35032,7 +35032,7 @@
       "amenity_score": 1.0,
       "power_assumed": false,
       "connector_assumed": false,
-      "source": "manual",
+      "source": "unverified_illustrative",
       "road_node_id": null,
       "detour_distance_m": 0.0,
       "detour_time_s": 0.0,
@@ -35059,7 +35059,7 @@
       "amenity_score": 1.0,
       "power_assumed": false,
       "connector_assumed": false,
-      "source": "manual",
+      "source": "unverified_illustrative",
       "road_node_id": null,
       "detour_distance_m": 0.0,
       "detour_time_s": 0.0,
@@ -35082,12 +35082,13 @@
     "count_by_source": {
       "osm": 0,
       "ocm": 0,
-      "manual": 5
+      "unverified_illustrative": 5
     },
     "distance_to_route_stats": {
       "min_km": 0.31,
       "mean_km": 1.73,
       "max_km": 3.22
-    }
+    },
+    "data_provenance": "manual_unverified"
   }
 }

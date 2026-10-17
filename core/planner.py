@@ -43,6 +43,7 @@ class EVPlanner:
         lambda_val: float | None = None,
         use_all_departure_levels: bool = True,
         enable_filter: bool = True,
+        filter_score_threshold: float = 0.35,
         precomputed_reduced_graph: ReducedChargerGraph | None = None,
     ) -> Plan:
         """Compute the optimal EV trip itinerary minimizing J = time + lambda * discomfort.
@@ -58,6 +59,7 @@ class EVPlanner:
             lambda_val: Trade-off parameter lambda (defaults to trip.comfort_weight_lambda).
             use_all_departure_levels: If True, evaluates all discrete s_dep > s_arr (exact).
             enable_filter: If True, runs range-preserving greedy charger filtering.
+            filter_score_threshold: Quality cutoff threshold for greedy charger filtering.
             precomputed_reduced_graph: Optional pre-built ReducedChargerGraph to avoid recomputation.
 
         Returns:
@@ -90,6 +92,7 @@ class EVPlanner:
                 destination_coord=dst_coord,
                 start_soc=trip.start_soc,
                 reserve_soc=trip.reserve_soc,
+                score_threshold=filter_score_threshold,
                 target_connector=car.supported_connectors[0] if car.supported_connectors else "CCS2",
             )
         else:
@@ -126,6 +129,8 @@ class EVPlanner:
 
         # Min-heap stores (cost_J, node_layer, s)
         pq: list[tuple[float, str, int]] = [(0.0, "source_dep", start_s)]
+        states_expanded = 0
+        edges_relaxed = 0
 
         while pq:
             curr_J, u_layer, s = heapq.heappop(pq)
@@ -133,10 +138,13 @@ class EVPlanner:
             if curr_J > dist_J.get((u_layer, s), float("inf")):
                 continue
 
+            states_expanded += 1
+
             # Case A: At a departed state (e.g. "source_dep" or f"{st_id}_dep") -> DRIVE
             if u_layer.endswith("_dep"):
                 outgoing_edges = reduced_graph.get_driving_edges(u_layer)
                 for red_edge in outgoing_edges:
+                    edges_relaxed += 1
                     arr_soc = red_edge.arrival_soc_table[s]
                     if arr_soc is None:
                         # Infeasible: battery drops below reserve along this edge
@@ -182,6 +190,7 @@ class EVPlanner:
 
                 s_in_soc = level_to_soc(s, K)
                 for s_dep_idx in candidate_departure_levels:
+                    edges_relaxed += 1
                     s_out_soc = level_to_soc(s_dep_idx, K)
                     t_chg = charge_time_min(s_in_soc, s_out_soc, station.max_kw, car)
                     d_chg = compute_dwell_discomfort(
@@ -246,6 +255,8 @@ class EVPlanner:
                 infeasibility_reason=reason,
                 build_time_ms=round(build_time_ms, 2),
                 search_time_ms=round(search_time_ms, 2),
+                states_expanded=states_expanded,
+                edges_relaxed=edges_relaxed,
             )
 
         # Step 5: Backtrack optimal itinerary
@@ -370,6 +381,8 @@ class EVPlanner:
             cost_J=min_dest_J,
             build_time_ms=round(build_time_ms, 2),
             search_time_ms=round(search_time_ms, 2),
+            states_expanded=states_expanded,
+            edges_relaxed=edges_relaxed,
             stops=stops,
             arrival_soc_dest=dest_arrival_soc,
             route_soc_profile=profile,

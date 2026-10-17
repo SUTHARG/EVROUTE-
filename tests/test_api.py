@@ -41,6 +41,7 @@ def test_snapshots_endpoint():
     )
     assert synthetic_snap is not None
     assert synthetic_snap["synthetic"] is True
+    assert synthetic_snap["data_provenance"] == "synthetic"
     assert synthetic_snap["is_reliability_simulated"] is True
     assert synthetic_snap["num_stations"] > 0
 
@@ -83,6 +84,7 @@ def test_plan_trip_synthetic():
 
     # Assert required metadata flags for frontend badges
     assert plan["synthetic"] is True
+    assert plan["data_provenance"] == "synthetic"
     assert plan["is_reliability_simulated"] is True
 
 
@@ -126,6 +128,7 @@ def test_pareto_endpoint():
     assert "points" in data
     assert len(data["points"]) >= 1
     assert data["synthetic"] is True
+    assert data["data_provenance"] == "synthetic"
     assert data["is_reliability_simulated"] is True
 
 

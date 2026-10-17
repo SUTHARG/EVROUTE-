@@ -1,6 +1,8 @@
+# Data Provenance: Model memory / training knowledge of Mumbai-Pune expressway plazas.
+# Status: Unverified illustrative data. Not verified against live API or physical ground truth.
 id,name,lat,lon,operator,max_kw,connector_types,amenity_score,source
-manual_mpe_01,Tata Power - Khalapur Food Plaza (KM 36),18.7954,73.2912,Tata Power,60.0,CCS2,0.90,manual
-manual_mpe_02,Zeon Charging - Lonavala Express Hub (KM 55),18.7525,73.4089,Zeon,50.0,CCS2,0.85,manual
-manual_mpe_03,Jio-bp pulse - Urse Toll Plaza (KM 85),18.7188,73.6125,Jio-bp,120.0,CCS2,0.85,manual
-manual_mpe_04,Statiq - Talegaon Expressway Fuel Stop (KM 98),18.7230,73.6845,Statiq,60.0,CCS2,0.75,manual
-manual_mpe_05,ChargeZone - Somatane Toll Hub (KM 105),18.7051,73.7120,ChargeZone,60.0,CCS2,0.70,manual
+manual_mpe_01,Tata Power - Khalapur Food Plaza (KM 36),18.7954,73.2912,Tata Power,60.0,CCS2,0.90,unverified_illustrative
+manual_mpe_02,Zeon Charging - Lonavala Express Hub (KM 55),18.7525,73.4089,Zeon,50.0,CCS2,0.85,unverified_illustrative
+manual_mpe_03,Jio-bp pulse - Urse Toll Plaza (KM 85),18.7188,73.6125,Jio-bp,120.0,CCS2,0.85,unverified_illustrative
+manual_mpe_04,Statiq - Talegaon Expressway Fuel Stop (KM 98),18.7230,73.6845,Statiq,60.0,CCS2,0.75,unverified_illustrative
+manual_mpe_05,ChargeZone - Somatane Toll Hub (KM 105),18.7051,73.7120,ChargeZone,60.0,CCS2,0.70,unverified_illustrative

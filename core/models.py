@@ -201,6 +201,12 @@ class Station(BaseModel):
     detour_energy_kwh: float = Field(
         0.0, description="Round-trip spur detour energy in kWh"
     )
+    source_url: str | None = Field(
+        None, description="Verification source URL for hand-verified chargers"
+    )
+    checked_on: str | None = Field(
+        None, description="Date or timestamp when charger data was verified"
+    )
 
 
 class RoadNode(BaseModel):
@@ -420,6 +426,8 @@ class Plan(BaseModel):
     cost_J: float = 0.0
     build_time_ms: float = 0.0
     search_time_ms: float = 0.0
+    states_expanded: int = 0
+    edges_relaxed: int = 0
     stops: list[ChargingStop] = Field(default_factory=list)
     arrival_soc_dest: float = 0.0
     route_soc_profile: list[RoutePoint] = Field(default_factory=list)

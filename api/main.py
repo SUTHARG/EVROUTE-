@@ -26,6 +26,7 @@ from api.schemas import (
 )
 from core.models import PRESET_CARS, Car, CorridorSnapshot, Trip
 from core.planner import EVPlanner
+from ingest.stations import compute_data_provenance
 
 
 @asynccontextmanager
@@ -126,6 +127,7 @@ def list_snapshots() -> list[SnapshotSummary]:
         seen_ids.add(snapshot.id)
 
         is_synth = bool(snapshot.metadata.get("synthetic", False) or "synthetic" in snapshot.id)
+        provenance = snapshot.metadata.get("data_provenance") or compute_data_provenance(snapshot.stations, snapshot.metadata)
         tot_dist = float(snapshot.metadata.get("total_distance_km", 0.0))
         if tot_dist <= 0.0 and snapshot.edges:
             tot_dist = sum(e.length_m for e in snapshot.edges) / 1000.0
@@ -141,6 +143,7 @@ def list_snapshots() -> list[SnapshotSummary]:
                 num_stations=len(snapshot.stations),
                 total_distance_km=round(tot_dist, 1),
                 synthetic=is_synth,
+                data_provenance=provenance,
                 is_reliability_simulated=True,
                 metadata=snapshot.metadata,
             )
@@ -154,6 +157,7 @@ def get_snapshot_details(snapshot_id: str) -> SnapshotSummary:
     """Retrieve metadata and station counts for a specific corridor snapshot."""
     snapshot = get_snapshot(snapshot_id)
     is_synth = bool(snapshot.metadata.get("synthetic", False) or "synthetic" in snapshot.id)
+    provenance = snapshot.metadata.get("data_provenance") or compute_data_provenance(snapshot.stations, snapshot.metadata)
     tot_dist = float(snapshot.metadata.get("total_distance_km", 0.0))
     if tot_dist <= 0.0 and snapshot.edges:
         tot_dist = sum(e.length_m for e in snapshot.edges) / 1000.0
@@ -168,6 +172,7 @@ def get_snapshot_details(snapshot_id: str) -> SnapshotSummary:
         num_stations=len(snapshot.stations),
         total_distance_km=round(tot_dist, 1),
         synthetic=is_synth,
+        data_provenance=provenance,
         is_reliability_simulated=True,
         metadata=snapshot.metadata,
     )
@@ -216,6 +221,7 @@ def plan_trip(req: PlanRequest) -> PlanResponse:
     )
 
     is_synth = bool(snapshot.metadata.get("synthetic", False) or "synthetic" in snapshot.id)
+    provenance = snapshot.metadata.get("data_provenance") or compute_data_provenance(snapshot.stations, snapshot.metadata)
 
     return PlanResponse(
         feasible=plan.feasible,
@@ -232,6 +238,7 @@ def plan_trip(req: PlanRequest) -> PlanResponse:
         route_soc_profile=plan.route_soc_profile,
         pareto_frontier=plan.pareto_frontier,
         synthetic=is_synth,
+        data_provenance=provenance,
         is_reliability_simulated=True,
     )
 
@@ -265,9 +272,11 @@ def compute_pareto_frontier(req: ParetoRequest) -> ParetoResponse:
     )
 
     is_synth = bool(snapshot.metadata.get("synthetic", False) or "synthetic" in snapshot.id)
+    provenance = snapshot.metadata.get("data_provenance") or compute_data_provenance(snapshot.stations, snapshot.metadata)
 
     return ParetoResponse(
         points=points,
         synthetic=is_synth,
+        data_provenance=provenance,
         is_reliability_simulated=True,
     )

@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from dotenv import load_dotenv
 
 from core.models import Station
 from ingest.cache import DiskCache
+
+load_dotenv()
 
 OVERPASS_API_URL: str = "https://overpass-api.de/api/interpreter"
 OPENCHARGEMAP_API_URL: str = "https://api.openchargemap.io/v3/poi"
@@ -64,11 +67,27 @@ class StationIngestionPolicy:
         self.raise_on_network_error = raise_on_network_error
 
 
-def load_curated_stations(csv_path: str | Path | None = None) -> list[Station]:
-    """Load verified real-world EV charging stations from a curated CSV dataset.
+def compute_data_provenance(stations: list[Station], metadata: dict[str, Any] | None = None) -> str:
+    """Compute data provenance classification: 'verified', 'manual_unverified', or 'synthetic'."""
+    if metadata and metadata.get("synthetic", False):
+        return "synthetic"
 
-    Used when live Open Charge Map API key is not configured and Overpass public mirrors
-    are experiencing outages or rate-limiting. Marked with source='manual'.
+    if not stations:
+        return "synthetic" if (metadata and metadata.get("synthetic", False)) else "manual_unverified"
+
+    sources = {st.source for st in stations}
+    if any(s.startswith("synth") for s in sources):
+        return "synthetic"
+    if all(s in {"verified", "osm", "ocm"} for s in sources):
+        return "verified"
+    return "manual_unverified"
+
+
+def load_curated_stations(csv_path: str | Path | None = None) -> list[Station]:
+    """Load illustrative charging stations from a curated CSV dataset.
+
+    Note: When stations originate from model memory, they are labeled source='unverified_illustrative'
+    and data_provenance is marked 'manual_unverified'.
     """
     if csv_path is None:
         csv_path = Path("data/stations/curated_mumbai_pune_chargers.csv")
@@ -80,9 +99,12 @@ def load_curated_stations(csv_path: str | Path | None = None) -> list[Station]:
 
     stations: list[Station] = []
     with open(path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
+        # Filter comment lines starting with #
+        lines = [line for line in f if not line.strip().startswith("#")]
+        reader = csv.DictReader(lines)
         for row in reader:
             connectors = [c.strip() for c in row.get("connector_types", "CCS2").split(";")]
+            src = row.get("source", "unverified_illustrative").strip()
             st = Station(
                 id=row["id"],
                 name=row["name"],
@@ -95,9 +117,59 @@ def load_curated_stations(csv_path: str | Path | None = None) -> list[Station]:
                 is_reliability_simulated=True,
                 amenities={"restaurant": 2, "cafe": 1, "toilets": 2, "fuel": 1},
                 amenity_score=float(row.get("amenity_score", 0.8)),
-                source="manual",
+                source=src,
             )
             stations.append(st)
+    return stations
+
+
+def load_user_verified_csv(csv_path: str | Path) -> list[Station]:
+    """Load hand-verified charging stations from a user-supplied CSV.
+
+    Required columns:
+        name, lat, lon, operator, max_kw, connectors, source_url, checked_on
+
+    Complexity:
+        O(|rows|)
+    """
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"User verified CSV not found at: {path}")
+
+    import csv
+
+    required_cols = {"name", "lat", "lon", "operator", "max_kw", "connectors", "source_url", "checked_on"}
+    stations: list[Station] = []
+
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [line for line in f if not line.strip().startswith("#")]
+        reader = csv.DictReader(lines)
+        if not required_cols.issubset(set(reader.fieldnames or [])):
+            missing = required_cols - set(reader.fieldnames or [])
+            raise ValueError(f"User CSV missing required columns: {missing}")
+
+        for idx, row in enumerate(reader):
+            connectors = [c.strip() for c in row["connectors"].split(";") if c.strip()]
+            op = row["operator"].strip()
+            st_id = f"verified_user_{idx + 1}"
+            st = Station(
+                id=st_id,
+                name=row["name"].strip(),
+                lat=float(row["lat"]),
+                lon=float(row["lon"]),
+                operator=op,
+                max_kw=float(row["max_kw"]),
+                connector_types=connectors,
+                reliability=simulate_station_reliability(op, st_id),
+                is_reliability_simulated=True,
+                amenities={},
+                amenity_score=0.85,
+                source="verified",
+                source_url=row["source_url"].strip(),
+                checked_on=row["checked_on"].strip(),
+            )
+            stations.append(st)
+
     return stations
 
 
@@ -378,8 +450,9 @@ def fetch_overpass_stations(
         for st in curated:
             stations.append(st)
             audit["kept"] += 1
-            audit["count_by_source"]["manual"] += 1
+            audit["count_by_source"][st.source] = audit["count_by_source"].get(st.source, 0) + 1
 
+    audit["data_provenance"] = compute_data_provenance(stations)
     return stations, audit
 
 

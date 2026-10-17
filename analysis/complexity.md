@@ -105,12 +105,37 @@ $$\text{Total States: } |V_{\text{state}}| = \mathcal{O}(|V_c| \cdot K)$$
 $$\text{Time Complexity: } \mathcal{O}\left( |E_{\text{state}}| \log |V_{\text{state}}| \right) = \mathcal{O}\left( (|E_c| \cdot K + |V_c| \cdot K^2) \log(|V_c| \cdot K) \right)$$
 $$\text{Space Complexity: } \mathcal{O}(|V_c| \cdot K + |E_c| \cdot K)$$
 
-### 4.4 Graph Contraction and Empirical Baseline
+### 4.4 Graph Contraction and Empirical Baseline (Measured on 2,495-Node Snapshot)
 If dynamic programming were executed directly on the physical road graph without contraction:
-- **Uncontracted State Space**: $|V_{\text{road}}| \cdot K$ states (e.g. $2{,}495 \times 100 \approx 250{,}000$ states), relaxing $|E_{\text{road}}| \cdot K$ driving transitions edge-by-edge.
-- **Contracted State Space**: $2 |V_c| \cdot K$ states (e.g. $2 \times 6 \times 100 \approx 1{,}200$ states), bypassing all intermediate road node relaxations.
-- **Empirical Measured Baseline**:
-  As benchmarked in `analysis/benchmarks.py` (Benchmark 5), executing Dijkstra directly on the uncontracted road graph requires expanding states across all 2,495 intermediate physical nodes, whereas the contracted 2-layer charger graph isolates transitions to charging decisions alone. On corridor topologies, graph contraction achieves an empirical search speedup of **1.3× to 5.0×** while decoupling graph precomputation from real-time queries. In practice, Dijkstra over the contracted 2-layer graph completes in **~1 to 5 milliseconds**, enabling instantaneous real-time query responses.
+- **Uncontracted State Space**: $|V_{\text{road}}| \cdot K$ states ($2{,}495 \times 30 = 74{,}850$ potential states), relaxing $|E_{\text{road}}| \cdot K$ driving transitions edge-by-edge along the highway.
+- **Contracted State Space**: $2 |V_c| \cdot K$ states ($2 \times 5 \times 30 = 300$ states), bypassing all intermediate road node relaxations.
+
+**Empirical Measured Baseline (`analysis/benchmarks.py`, Benchmark 5)**:
+Using the real 2,495-node Mumbai–Pune corridor snapshot (`real_mumbai_pune.json`) with $|V_{\text{road}}| = 2{,}495$, $|V_c| = 5$, and $K = 30$:
+- **Contracted 2-Layer DP**:
+  - Search Time: **15.68 ms**
+  - States Expanded: **261**
+  - Edges Relaxed: **1,919**
+- **Uncontracted Full Road Graph DP**:
+  - Search Time: **87.76 ms**
+  - States Expanded: **30,103**
+  - Edges Relaxed: **31,815**
+- **Contraction Impact**:
+  - State expansions reduced by **115.3×** (30,103 $\to$ 261).
+  - Empirical search runtime speedup: **5.6×** (87.76 ms $\to$ 15.68 ms).
+
+### 4.5 Empirical vs. Theoretical Scaling Slopes
+Fitting log-log slopes across empirical runs in Benchmarks 1 and 2 yields:
+- **Search time vs. $|V_c|$**: Empirical slope **1.32** (Theoretical worst case: $\mathcal{O}(|V_c|^2) = 2.0$).
+- **Search time vs. $K$**: Empirical slope **1.67** (Theoretical worst case: $\mathcal{O}(K^2) = 2.0$).
+
+**Why are empirical slopes below theoretical upper bounds?**
+1. **Range-Limited Reduced Edges (for $|V_c|$)**:
+   In a general complete graph, $|E_c| = \frac{|V_c|(|V_c|-1)}{2} = \mathcal{O}(|V_c|^2)$. However, along an EV highway corridor, reachable reduced edges are physically bounded by vehicle battery capacity (e.g., 150–250 km). A station at km 30 cannot directly reach a station at km 180 without exhausting battery reserves; such edges are pruned during reduced graph construction (`arrival_soc_table` entries are all infeasible / `None`). Thus, the effective out-degree of each station is bounded by a constant local horizon ($\text{deg}(u) \le d_{\max} \ll |V_c|$), reducing the number of driving transitions to $\mathcal{O}(|V_c|)$ rather than $\mathcal{O}(|V_c|^2)$, leading to the measured slope of **1.32**.
+2. **Forward Charging and Min-Heap Pruning (for $K$)**:
+   In theory, all pairs of $(s_{\text{arr}}, s_{\text{dep}})$ could produce $(K+1)^2/2$ charging transitions. In practice:
+   - Charging transitions only branch strictly forward ($s_{\text{dep}} > s_{\text{arr}}$).
+   - Dijkstra's algorithm with a priority queue extracts states in order of increasing scalar cost $J$. Dominated, high-cost states with lower arrival SoC at a station are extracted later and pruned early before their entire charging fans are explored, yielding a measured scaling exponent of **1.67** rather than 2.0.
 
 ---
 

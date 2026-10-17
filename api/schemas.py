@@ -30,6 +30,7 @@ class SnapshotSummary(BaseModel):
     num_stations: int
     total_distance_km: float
     synthetic: bool = Field(..., description="Flag indicating if corridor topography/stations are synthetic")
+    data_provenance: str = Field("synthetic", description="Provenance status: 'verified', 'manual_unverified', or 'synthetic'")
     is_reliability_simulated: bool = Field(True, description="Always True: charger reliability is simulated")
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -67,6 +68,7 @@ class PlanResponse(BaseModel):
 
     # Metadata flags for UI badges
     synthetic: bool = Field(..., description="Flag for UI: whether corridor is synthetic")
+    data_provenance: str = Field("synthetic", description="Provenance status: 'verified', 'manual_unverified', or 'synthetic'")
     is_reliability_simulated: bool = Field(True, description="Flag for UI: charger reliability is simulated")
 
 
@@ -87,4 +89,5 @@ class ParetoResponse(BaseModel):
 
     points: list[ParetoPoint]
     synthetic: bool
+    data_provenance: str = "synthetic"
     is_reliability_simulated: bool = True

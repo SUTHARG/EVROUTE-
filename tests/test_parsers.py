@@ -87,3 +87,26 @@ def test_cache_key_includes_query_params():
     key1 = "18.9,72.8_18.5,73.8_alt=True"
     key2 = "18.9,72.8_18.5,73.8_alt=False"
     assert client.cache._hash_key(key1) != client.cache._hash_key(key2)
+
+
+def test_load_user_verified_csv_and_provenance(tmp_path):
+    """Verify loading user hand-verified CSV with mandatory columns and provenance tracking."""
+    from ingest.stations import compute_data_provenance, load_user_verified_csv
+
+    csv_content = """name,lat,lon,operator,max_kw,connectors,source_url,checked_on
+Expressway Fast Hub,18.7500,73.4000,Zeon,60.0,CCS2;Type2,https://example.com/charger/1,2026-10-15
+Plaza Supercharger,18.7200,73.6000,Tata Power,120.0,CCS2,https://example.com/charger/2,2026-10-16
+"""
+    csv_file = tmp_path / "user_verified_chargers.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    stations = load_user_verified_csv(csv_file)
+    assert len(stations) == 2
+    assert stations[0].name == "Expressway Fast Hub"
+    assert stations[0].max_kw == 60.0
+    assert stations[0].connector_types == ["CCS2", "Type2"]
+    assert stations[0].source_url == "https://example.com/charger/1"
+    assert stations[0].checked_on == "2026-10-15"
+
+    prov = compute_data_provenance(stations, metadata={"synthetic": False})
+    assert prov == "verified"

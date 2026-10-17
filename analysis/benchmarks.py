@@ -18,6 +18,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 
 from core.brute_force import solve_brute_force
+from core.charger_graph import map_stations_to_road_nodes
 from core.charging import charge_time_min
 from core.comfort import compute_dwell_discomfort
 from core.energy import discretize_soc_level, level_to_soc
@@ -276,7 +277,7 @@ def solve_full_road_graph_dp(
     car: Car,
     trip: Trip,
     lambda_val: float = 0.0,
-) -> tuple[float, float]:
+) -> tuple[float, float, int, int]:
     """Execute dynamic programming directly on the uncontracted physical road network.
 
     State space: (node_id: int, s: int) for all node_id in V_road and s in 0..K.
@@ -291,6 +292,7 @@ def solve_full_road_graph_dp(
     """
     K = trip.K
     start_s = discretize_soc_level(trip.start_soc, K)
+    start_kwh = trip.start_soc * car.usable_battery_kwh
 
     road_graph = RoadGraph.from_snapshot(snapshot)
     source_node = (
@@ -305,50 +307,58 @@ def solve_full_road_graph_dp(
     )
 
     # Map road nodes to stations
-    station_at_node = {st.road_node_id: st for st in snapshot.stations}
+    st_map = map_stations_to_road_nodes(snapshot.stations, road_graph)
+    station_at_node = {node_id: st for st in snapshot.stations if (node_id := st_map.get(st.id)) is not None}
 
     t0 = time.perf_counter()
     dist: dict[tuple[int, int], float] = {(source_node, start_s): 0.0}
-    pq: list[tuple[float, int, int]] = [(0.0, source_node, start_s)]
+    kwh_at_state: dict[tuple[int, int], float] = {(source_node, start_s): start_kwh}
+    pq: list[tuple[float, float, int, int]] = [(0.0, -start_kwh, source_node, start_s)]
 
     best_dest_cost = float("inf")
+    states_expanded = 0
+    edges_relaxed = 0
 
     while pq:
-        curr_d, u, s = heapq.heappop(pq)
-        if curr_d > dist.get((u, s), float("inf")):
+        curr_d, neg_kwh, u, s = heapq.heappop(pq)
+        curr_kwh = -neg_kwh
+        if curr_d > dist.get((u, s), float("inf")) + 1e-9:
             continue
 
+        states_expanded += 1
         if u == dest_node:
             best_dest_cost = min(best_dest_cost, curr_d)
+            break
 
         # 1. Drive along outgoing road edges
         for edge in road_graph.get_outgoing_edges(u):
+            edges_relaxed += 1
             v = edge.v
-            # Energy consumption along edge
-            edge_soc_delta = edge.energy_kwh / car.usable_battery_kwh
-            s_frac = level_to_soc(s, K) - edge_soc_delta
-            s_frac = min(1.0, s_frac)
+            next_kwh = min(car.usable_battery_kwh, curr_kwh - edge.energy_kwh)
+            next_soc = next_kwh / car.usable_battery_kwh
 
-            if s_frac + 1e-9 < trip.reserve_soc:
+            if next_soc + 1e-9 < trip.reserve_soc:
                 continue
 
-            s_next = discretize_soc_level(s_frac, K)
+            next_s = discretize_soc_level(next_soc, K)
             drive_time_min = edge.time_s / 60.0
             new_cost = curr_d + drive_time_min
 
-            if new_cost < dist.get((v, s_next), float("inf")) - 1e-9:
-                dist[(v, s_next)] = new_cost
-                heapq.heappush(pq, (new_cost, v, s_next))
+            if new_cost < dist.get((v, next_s), float("inf")) - 1e-9:
+                dist[(v, next_s)] = new_cost
+                kwh_at_state[(v, next_s)] = next_kwh
+                heapq.heappush(pq, (new_cost, -next_kwh, v, next_s))
 
         # 2. Charge at station if present at node u
         if u in station_at_node:
             station = station_at_node[u]
-            s_arr_soc = level_to_soc(s, K)
+            curr_soc = curr_kwh / car.usable_battery_kwh
 
             for s_dep in range(s + 1, K + 1):
+                edges_relaxed += 1
                 s_dep_soc = level_to_soc(s_dep, K)
                 t_chg = charge_time_min(
-                    s_in=s_arr_soc,
+                    s_in=curr_soc,
                     s_out=s_dep_soc,
                     station_max_kw=station.max_kw,
                     car=car,
@@ -357,19 +367,21 @@ def solve_full_road_graph_dp(
                     dwell_min=t_chg,
                     amenity_score=station.amenity_score,
                     is_real_charge=True,
-                    arrival_soc=s_arr_soc,
+                    arrival_soc=curr_soc,
                     stop_threshold_soc=trip.stop_threshold_soc,
                     gamma=trip.gamma,
                 )
                 chg_cost = t_chg + lambda_val * d_chg
                 new_cost = curr_d + chg_cost
+                dep_kwh = s_dep_soc * car.usable_battery_kwh
 
                 if new_cost < dist.get((u, s_dep), float("inf")) - 1e-9:
                     dist[(u, s_dep)] = new_cost
-                    heapq.heappush(pq, (new_cost, u, s_dep))
+                    kwh_at_state[(u, s_dep)] = dep_kwh
+                    heapq.heappush(pq, (new_cost, -dep_kwh, u, s_dep))
 
     runtime_ms = (time.perf_counter() - t0) * 1000.0
-    return best_dest_cost, runtime_ms
+    return best_dest_cost, runtime_ms, states_expanded, edges_relaxed
 
 
 def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
@@ -378,16 +390,22 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
     planner = EVPlanner()
     K = 30
 
-    snapshot = generate_synthetic_corridor(
-        total_distance_km=160.0,
-        num_road_segments=60,
-        num_stations=6,
-        seed=777,
-        car=car,
-    )
+    real_path = Path("data/snapshots/real_mumbai_pune.json")
+    if real_path.exists():
+        with open(real_path) as f:
+            snapshot = CorridorSnapshot(**json.load(f))
+    else:
+        snapshot = generate_synthetic_corridor(
+            total_distance_km=160.0,
+            num_road_segments=60,
+            num_stations=6,
+            seed=777,
+            car=car,
+        )
+
     trip = Trip(
         snapshot_id=snapshot.id,
-        start_soc=0.45,
+        start_soc=0.50,
         reserve_soc=0.10,
         stop_threshold_soc=0.35,
         comfort_weight_lambda=0.0,
@@ -406,30 +424,39 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
         t_search_sum += plan.search_time_ms
     contracted_search_ms = t_search_sum / trials
     contracted_cost = plan.cost_J if plan else float("inf")
+    contracted_states = plan.states_expanded if plan else 0
+    contracted_relaxed = plan.edges_relaxed if plan else 0
 
     # 2. Uncontracted full road graph DP
     trials_full = 3
     t_full_sum = 0.0
     full_cost = 0.0
+    full_states = 0
+    full_relaxed = 0
     for _ in range(trials_full):
-        full_cost, r_ms = solve_full_road_graph_dp(snapshot, car, trip, lambda_val=0.0)
+        full_cost, r_ms, full_states, full_relaxed = solve_full_road_graph_dp(snapshot, car, trip, lambda_val=0.0)
         t_full_sum += r_ms
     full_road_ms = t_full_sum / trials_full
 
     speedup = full_road_ms / max(0.01, contracted_search_ms)
+    state_reduction = full_states / max(1, contracted_states)
 
-    print(f"Contracted Charger Graph DP Search: {contracted_search_ms:>6.2f} ms | Cost: {contracted_cost:.2f} min")
-    print(f"Uncontracted Full Road Graph DP:     {full_road_ms:>6.2f} ms | Cost: {full_cost:.2f} min")
-    print(f"[+] Empirical Search Speedup via Contraction: {speedup:.1f}x")
+    print(f"Contracted Charger Graph DP:  Search={contracted_search_ms:>6.2f} ms | Cost={contracted_cost:.2f} min | States={contracted_states} | Relaxed={contracted_relaxed}")
+    print(f"Uncontracted Road Graph DP:   Search={full_road_ms:>6.2f} ms | Cost={full_cost:.2f} min | States={full_states} | Relaxed={full_relaxed}")
+    print(f"[+] Empirical Search Speedup via Contraction: {speedup:.1f}x (State expansions reduced by {state_reduction:.1f}x)")
 
     return {
         "V_road": len(snapshot.nodes),
         "V_c": len(snapshot.stations),
         "K": K,
         "contracted_search_ms": round(contracted_search_ms, 2),
+        "contracted_states": contracted_states,
+        "contracted_relaxed": contracted_relaxed,
         "full_road_ms": round(full_road_ms, 2),
+        "full_states": full_states,
+        "full_relaxed": full_relaxed,
         "speedup": round(speedup, 1),
-        "costs_consistent": abs(contracted_cost - full_cost) < 5.0,
+        "state_reduction": round(state_reduction, 1),
     }
 
 

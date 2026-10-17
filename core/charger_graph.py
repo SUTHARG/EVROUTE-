@@ -100,6 +100,16 @@ def build_reduced_charger_graph(
            edge simulation with 100% clamping and reserve verification.
         4. Prune candidate edges if completely infeasible across all departure levels.
 
+    Two-Candidate-Path Limitation:
+        For each pair of stops (u, v), the reduced graph computes exactly two candidate
+        paths: the time-optimal path (Dijkstra on time_s) and the net-energy-optimal path
+        (Bellman-Ford on energy_kwh). In general networks, intermediate Pareto-optimal paths
+        (e.g., paths with moderate time and energy, or paths avoiding steep crests that clamp
+        at 100% battery) could exist that dominate both candidates under specific battery states.
+        Limiting the candidate set to {fastest, eco} is an efficient corridor heuristic that
+        guarantees polynomial precomputation O(|V_c| * |E_road| log |V_road|) while capturing
+        the primary time-vs-energy trade-off.
+
     Complexity:
         Time: O(|V_c| * (|E_road| log |V_road| + |V_road| |E_road|) + |V_c|^2 * K * |path|)
         Space: O(|V_c|^2 * K)
