@@ -1,0 +1,1052 @@
+{
+  "id": "synthetic_mumbai_pune_v1",
+  "source_name": "Mumbai",
+  "destination_name": "Pune",
+  "created_at": "2026-10-17T20:00:00Z",
+  "nodes": {
+    "0": {
+      "id": 0,
+      "lat": 18.9388,
+      "lon": 72.8354,
+      "elevation_m": 14.39
+    },
+    "1": {
+      "id": 1,
+      "lat": 18.93294,
+      "lon": 72.85331,
+      "elevation_m": 14.68
+    },
+    "2": {
+      "id": 2,
+      "lat": 18.92708,
+      "lon": 72.87124,
+      "elevation_m": 14.65
+    },
+    "3": {
+      "id": 3,
+      "lat": 18.92119,
+      "lon": 72.88918,
+      "elevation_m": 16.87
+    },
+    "4": {
+      "id": 4,
+      "lat": 18.91528,
+      "lon": 72.90716,
+      "elevation_m": 18.47
+    },
+    "5": {
+      "id": 5,
+      "lat": 18.90932,
+      "lon": 72.92517,
+      "elevation_m": 20.61
+    },
+    "6": {
+      "id": 6,
+      "lat": 18.90332,
+      "lon": 72.94323,
+      "elevation_m": 20.11
+    },
+    "7": {
+      "id": 7,
+      "lat": 18.89726,
+      "lon": 72.96135,
+      "elevation_m": 20.4
+    },
+    "8": {
+      "id": 8,
+      "lat": 18.89113,
+      "lon": 72.97954,
+      "elevation_m": 19.48
+    },
+    "9": {
+      "id": 9,
+      "lat": 18.88492,
+      "lon": 72.9978,
+      "elevation_m": 20.54
+    },
+    "10": {
+      "id": 10,
+      "lat": 18.87863,
+      "lon": 73.01615,
+      "elevation_m": 21.51
+    },
+    "11": {
+      "id": 11,
+      "lat": 18.87225,
+      "lon": 73.03459,
+      "elevation_m": 22.3
+    },
+    "12": {
+      "id": 12,
+      "lat": 18.86577,
+      "lon": 73.05313,
+      "elevation_m": 23.06
+    },
+    "13": {
+      "id": 13,
+      "lat": 18.85917,
+      "lon": 73.07178,
+      "elevation_m": 24.15
+    },
+    "14": {
+      "id": 14,
+      "lat": 18.85247,
+      "lon": 73.09054,
+      "elevation_m": 25.99
+    },
+    "15": {
+      "id": 15,
+      "lat": 18.84564,
+      "lon": 73.10943,
+      "elevation_m": 26.83
+    },
+    "16": {
+      "id": 16,
+      "lat": 18.83869,
+      "lon": 73.12844,
+      "elevation_m": 27.51
+    },
+    "17": {
+      "id": 17,
+      "lat": 18.8316,
+      "lon": 73.14759,
+      "elevation_m": 31.38
+    },
+    "18": {
+      "id": 18,
+      "lat": 18.82437,
+      "lon": 73.16687,
+      "elevation_m": 34.74
+    },
+    "19": {
+      "id": 19,
+      "lat": 18.817,
+      "lon": 73.1863,
+      "elevation_m": 43.17
+    },
+    "20": {
+      "id": 20,
+      "lat": 18.80948,
+      "lon": 73.20588,
+      "elevation_m": 54.3
+    },
+    "21": {
+      "id": 21,
+      "lat": 18.80182,
+      "lon": 73.2256,
+      "elevation_m": 76.33
+    },
+    "22": {
+      "id": 22,
+      "lat": 18.794,
+      "lon": 73.24548,
+      "elevation_m": 110.15
+    },
+    "23": {
+      "id": 23,
+      "lat": 18.78602,
+      "lon": 73.26551,
+      "elevation_m": 167.7
+    },
+    "24": {
+      "id": 24,
+      "lat": 18.77789,
+      "lon": 73.2857,
+      "elevation_m": 246.39
+    },
+    "25": {
+      "id": 25,
+      "lat": 18.7696,
+      "lon": 73.30605,
+      "elevation_m": 339.62
+    },
+    "26": {
+      "id": 26,
+      "lat": 18.76115,
+      "lon": 73.32655,
+      "elevation_m": 430.2
+    },
+    "27": {
+      "id": 27,
+      "lat": 18.75255,
+      "lon": 73.34722,
+      "elevation_m": 510.6
+    },
+    "28": {
+      "id": 28,
+      "lat": 18.74379,
+      "lon": 73.36804,
+      "elevation_m": 568.99
+    },
+    "29": {
+      "id": 29,
+      "lat": 18.73487,
+      "lon": 73.38901,
+      "elevation_m": 607.35
+    },
+    "30": {
+      "id": 30,
+      "lat": 18.7258,
+      "lon": 73.41014,
+      "elevation_m": 627.87
+    },
+    "31": {
+      "id": 31,
+      "lat": 18.71658,
+      "lon": 73.43141,
+      "elevation_m": 639.15
+    },
+    "32": {
+      "id": 32,
+      "lat": 18.70722,
+      "lon": 73.45284,
+      "elevation_m": 645.65
+    },
+    "33": {
+      "id": 33,
+      "lat": 18.69771,
+      "lon": 73.47441,
+      "elevation_m": 645.7
+    },
+    "34": {
+      "id": 34,
+      "lat": 18.68806,
+      "lon": 73.49611,
+      "elevation_m": 643.36
+    },
+    "35": {
+      "id": 35,
+      "lat": 18.67828,
+      "lon": 73.51795,
+      "elevation_m": 637.84
+    },
+    "36": {
+      "id": 36,
+      "lat": 18.66837,
+      "lon": 73.53992,
+      "elevation_m": 633.33
+    },
+    "37": {
+      "id": 37,
+      "lat": 18.65834,
+      "lon": 73.562,
+      "elevation_m": 629.02
+    },
+    "38": {
+      "id": 38,
+      "lat": 18.6482,
+      "lon": 73.58421,
+      "elevation_m": 623.2
+    },
+    "39": {
+      "id": 39,
+      "lat": 18.63794,
+      "lon": 73.60652,
+      "elevation_m": 618.29
+    },
+    "40": {
+      "id": 40,
+      "lat": 18.62759,
+      "lon": 73.62893,
+      "elevation_m": 610.97
+    },
+    "41": {
+      "id": 41,
+      "lat": 18.61715,
+      "lon": 73.65143,
+      "elevation_m": 604.89
+    },
+    "42": {
+      "id": 42,
+      "lat": 18.60661,
+      "lon": 73.67402,
+      "elevation_m": 598.64
+    },
+    "43": {
+      "id": 43,
+      "lat": 18.59601,
+      "lon": 73.69669,
+      "elevation_m": 593.59
+    },
+    "44": {
+      "id": 44,
+      "lat": 18.58533,
+      "lon": 73.71942,
+      "elevation_m": 588.46
+    },
+    "45": {
+      "id": 45,
+      "lat": 18.5746,
+      "lon": 73.74221,
+      "elevation_m": 582.82
+    },
+    "46": {
+      "id": 46,
+      "lat": 18.56382,
+      "lon": 73.76505,
+      "elevation_m": 578.2
+    },
+    "47": {
+      "id": 47,
+      "lat": 18.553,
+      "lon": 73.78793,
+      "elevation_m": 574.13
+    },
+    "48": {
+      "id": 48,
+      "lat": 18.54215,
+      "lon": 73.81083,
+      "elevation_m": 569.7
+    },
+    "49": {
+      "id": 49,
+      "lat": 18.53128,
+      "lon": 73.83376,
+      "elevation_m": 564.8
+    },
+    "50": {
+      "id": 50,
+      "lat": 18.5204,
+      "lon": 73.8567,
+      "elevation_m": 561.51
+    }
+  },
+  "edges": [
+    {
+      "u": 0,
+      "v": 1,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.29,
+      "energy_kwh": 0.471
+    },
+    {
+      "u": 1,
+      "v": 2,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -0.03,
+      "energy_kwh": 0.4697
+    },
+    {
+      "u": 2,
+      "v": 3,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 2.22,
+      "energy_kwh": 0.4792
+    },
+    {
+      "u": 3,
+      "v": 4,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 1.6,
+      "energy_kwh": 0.4766
+    },
+    {
+      "u": 4,
+      "v": 5,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 2.14,
+      "energy_kwh": 0.4789
+    },
+    {
+      "u": 5,
+      "v": 6,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -0.5,
+      "energy_kwh": 0.4677
+    },
+    {
+      "u": 6,
+      "v": 7,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.29,
+      "energy_kwh": 0.471
+    },
+    {
+      "u": 7,
+      "v": 8,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -0.92,
+      "energy_kwh": 0.4659
+    },
+    {
+      "u": 8,
+      "v": 9,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 1.06,
+      "energy_kwh": 0.4743
+    },
+    {
+      "u": 9,
+      "v": 10,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.97,
+      "energy_kwh": 0.4739
+    },
+    {
+      "u": 10,
+      "v": 11,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.79,
+      "energy_kwh": 0.4732
+    },
+    {
+      "u": 11,
+      "v": 12,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.76,
+      "energy_kwh": 0.473
+    },
+    {
+      "u": 12,
+      "v": 13,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 1.09,
+      "energy_kwh": 0.4744
+    },
+    {
+      "u": 13,
+      "v": 14,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 1.84,
+      "energy_kwh": 0.4776
+    },
+    {
+      "u": 14,
+      "v": 15,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.84,
+      "energy_kwh": 0.4734
+    },
+    {
+      "u": 15,
+      "v": 16,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.68,
+      "energy_kwh": 0.4727
+    },
+    {
+      "u": 16,
+      "v": 17,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 3.87,
+      "energy_kwh": 0.4862
+    },
+    {
+      "u": 17,
+      "v": 18,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 3.36,
+      "energy_kwh": 0.4841
+    },
+    {
+      "u": 18,
+      "v": 19,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 8.43,
+      "energy_kwh": 0.5055
+    },
+    {
+      "u": 19,
+      "v": 20,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 11.13,
+      "energy_kwh": 0.517
+    },
+    {
+      "u": 20,
+      "v": 21,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 22.03,
+      "energy_kwh": 0.4511
+    },
+    {
+      "u": 21,
+      "v": 22,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 33.82,
+      "energy_kwh": 0.501
+    },
+    {
+      "u": 22,
+      "v": 23,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 57.55,
+      "energy_kwh": 0.6016
+    },
+    {
+      "u": 23,
+      "v": 24,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 78.69,
+      "energy_kwh": 0.6912
+    },
+    {
+      "u": 24,
+      "v": 25,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 93.23,
+      "energy_kwh": 0.7528
+    },
+    {
+      "u": 25,
+      "v": 26,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 90.58,
+      "energy_kwh": 0.7416
+    },
+    {
+      "u": 26,
+      "v": 27,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 80.4,
+      "energy_kwh": 0.6984
+    },
+    {
+      "u": 27,
+      "v": 28,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 58.39,
+      "energy_kwh": 0.6051
+    },
+    {
+      "u": 28,
+      "v": 29,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 38.36,
+      "energy_kwh": 0.5203
+    },
+    {
+      "u": 29,
+      "v": 30,
+      "length_m": 3000.0,
+      "time_s": 196.4,
+      "elevation_gain_m": 20.52,
+      "energy_kwh": 0.4447
+    },
+    {
+      "u": 30,
+      "v": 31,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 11.28,
+      "energy_kwh": 0.5176
+    },
+    {
+      "u": 31,
+      "v": 32,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 6.5,
+      "energy_kwh": 0.4974
+    },
+    {
+      "u": 32,
+      "v": 33,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": 0.05,
+      "energy_kwh": 0.47
+    },
+    {
+      "u": 33,
+      "v": 34,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -2.34,
+      "energy_kwh": 0.4599
+    },
+    {
+      "u": 34,
+      "v": 35,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -5.52,
+      "energy_kwh": 0.4464
+    },
+    {
+      "u": 35,
+      "v": 36,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -4.51,
+      "energy_kwh": 0.4507
+    },
+    {
+      "u": 36,
+      "v": 37,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -4.31,
+      "energy_kwh": 0.4516
+    },
+    {
+      "u": 37,
+      "v": 38,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -5.82,
+      "energy_kwh": 0.4452
+    },
+    {
+      "u": 38,
+      "v": 39,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -4.91,
+      "energy_kwh": 0.449
+    },
+    {
+      "u": 39,
+      "v": 40,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -7.32,
+      "energy_kwh": 0.4388
+    },
+    {
+      "u": 40,
+      "v": 41,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -6.08,
+      "energy_kwh": 0.4441
+    },
+    {
+      "u": 41,
+      "v": 42,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -6.25,
+      "energy_kwh": 0.4433
+    },
+    {
+      "u": 42,
+      "v": 43,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -5.05,
+      "energy_kwh": 0.4484
+    },
+    {
+      "u": 43,
+      "v": 44,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -5.13,
+      "energy_kwh": 0.4481
+    },
+    {
+      "u": 44,
+      "v": 45,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -5.64,
+      "energy_kwh": 0.4459
+    },
+    {
+      "u": 45,
+      "v": 46,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -4.62,
+      "energy_kwh": 0.4502
+    },
+    {
+      "u": 46,
+      "v": 47,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -4.07,
+      "energy_kwh": 0.4526
+    },
+    {
+      "u": 47,
+      "v": 48,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -4.43,
+      "energy_kwh": 0.451
+    },
+    {
+      "u": 48,
+      "v": 49,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -4.9,
+      "energy_kwh": 0.4491
+    },
+    {
+      "u": 49,
+      "v": 50,
+      "length_m": 3000.0,
+      "time_s": 135.0,
+      "elevation_gain_m": -3.29,
+      "energy_kwh": 0.4559
+    }
+  ],
+  "stations": [
+    {
+      "id": "synth_stat_01",
+      "name": "Fortum Charge & Drive - Highway Stop 1",
+      "lat": 18.92571,
+      "lon": 72.87451,
+      "operator": "Fortum Charge & Drive",
+      "max_kw": 30.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.888,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 1,
+        "cafe": 2,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_02",
+      "name": "Fortum Charge & Drive - Highway Stop 2",
+      "lat": 18.90901,
+      "lon": 72.92982,
+      "operator": "Fortum Charge & Drive",
+      "max_kw": 150.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.918,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 1,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.85,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_03",
+      "name": "Tata Power - Highway Stop 3",
+      "lat": 18.89344,
+      "lon": 72.99893,
+      "operator": "Tata Power",
+      "max_kw": 60.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.903,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 1,
+        "cafe": 0,
+        "toilets": 2,
+        "fuel": 1
+      },
+      "amenity_score": 0.85,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_04",
+      "name": "Fortum Charge & Drive - Highway Stop 4",
+      "lat": 18.86189,
+      "lon": 73.05751,
+      "operator": "Fortum Charge & Drive",
+      "max_kw": 120.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.896,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 0,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.45,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_05",
+      "name": "ChargeZone - Highway Stop 5",
+      "lat": 18.85208,
+      "lon": 73.10891,
+      "operator": "ChargeZone",
+      "max_kw": 120.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.879,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 2,
+        "cafe": 1,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_06",
+      "name": "Tata Power - Highway Stop 6",
+      "lat": 18.81709,
+      "lon": 73.18403,
+      "operator": "Tata Power",
+      "max_kw": 30.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.971,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 0,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.45,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_07",
+      "name": "Zeon Charging - Highway Stop 7",
+      "lat": 18.79598,
+      "lon": 73.25016,
+      "operator": "Zeon Charging",
+      "max_kw": 150.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.934,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 3,
+        "cafe": 1,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_08",
+      "name": "Statiq - Highway Stop 8",
+      "lat": 18.76825,
+      "lon": 73.30758,
+      "operator": "Statiq",
+      "max_kw": 60.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.879,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 1,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.85,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_09",
+      "name": "Fortum Charge & Drive - Highway Stop 9",
+      "lat": 18.75163,
+      "lon": 73.34706,
+      "operator": "Fortum Charge & Drive",
+      "max_kw": 60.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.905,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 1,
+        "cafe": 2,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_10",
+      "name": "ChargeZone - Highway Stop 10",
+      "lat": 18.71362,
+      "lon": 73.42893,
+      "operator": "ChargeZone",
+      "max_kw": 50.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.874,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 0,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.45,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_11",
+      "name": "Tata Power - Highway Stop 11",
+      "lat": 18.68643,
+      "lon": 73.48765,
+      "operator": "Tata Power",
+      "max_kw": 150.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.93,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 0,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.45,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_12",
+      "name": "Statiq - Highway Stop 12",
+      "lat": 18.66796,
+      "lon": 73.5444,
+      "operator": "Statiq",
+      "max_kw": 50.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.873,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 0,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.45,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_13",
+      "name": "ChargeZone - Highway Stop 13",
+      "lat": 18.63,
+      "lon": 73.63411,
+      "operator": "ChargeZone",
+      "max_kw": 50.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.8,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 1,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.85,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_14",
+      "name": "ChargeZone - Highway Stop 14",
+      "lat": 18.58489,
+      "lon": 73.71692,
+      "operator": "ChargeZone",
+      "max_kw": 120.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.869,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 3,
+        "cafe": 2,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false
+    },
+    {
+      "id": "synth_stat_15",
+      "name": "Statiq - Highway Stop 15",
+      "lat": 18.54872,
+      "lon": 73.78564,
+      "operator": "Statiq",
+      "max_kw": 120.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.851,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 2,
+        "cafe": 0,
+        "toilets": 1,
+        "fuel": 1
+      },
+      "amenity_score": 0.85,
+      "power_assumed": false,
+      "connector_assumed": false
+    }
+  ],
+  "metadata": {
+    "synthetic": true,
+    "ascent_before_smoothing_m": 649.72,
+    "ascent_after_smoothing_m": 632.76,
+    "total_distance_km": 150.0,
+    "num_road_segments": 50,
+    "num_stations": 15,
+    "kept_stations": 15,
+    "dropped_connector": 0,
+    "dropped_power": 0,
+    "assumed_defaults": 0
+  }
+}

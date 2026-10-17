@@ -232,10 +232,10 @@ def test_clamping_counterexample_user_scenario():
 
 
 def test_arrival_soc_table_monotonicity():
-    """Verify that build_arrival_soc_table produces a strictly monotonic arrival SoC.
+    """Verify that build_arrival_soc_table produces non-strict monotonic arrival SoC.
 
-    For any physical road path, s_a <= s_b implies arrival_soc(s_a) <= arrival_soc(s_b)
-    for all non-None levels.
+    Due to 100% battery capacity clamping, the arrival SoC plateau is non-decreasing:
+    s_a <= s_b implies arrival_soc(s_a) <= arrival_soc(s_b) for all valid levels.
     """
     car = PRESET_CARS["hyundai_ioniq_5"]
     edges = [
