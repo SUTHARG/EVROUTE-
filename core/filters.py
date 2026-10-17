@@ -150,6 +150,7 @@ def filter_stations_greedy(
     reinstated_count = 0
 
     max_iterations = len(available_dropped) + 5
+    unbridgeable_gap: dict[str, Any] | None = None
     for _ in range(max_iterations):
         # Current ordered kept list
         current_kept = sorted([stations_by_id[sid] for sid in kept_ids], key=project_station_distance)
@@ -163,8 +164,8 @@ def filter_stations_greedy(
 
         # Verify each consecutive gap
         for i in range(len(points) - 1):
-            p1_dist, _ = points[i]
-            p2_dist, _ = points[i + 1]
+            p1_dist, p1_st = points[i]
+            p2_dist, p2_st = points[i + 1]
             gap_dist_m = p2_dist - p1_dist
 
             allowed_dist_m = max_start_range_m if i == 0 else max_range_m
@@ -183,6 +184,19 @@ def filter_stations_greedy(
                     reinstated_count += 1
                     gap_violated = True
                     break  # Re-evaluate gaps with updated kept set
+                else:
+                    p1_name = "Source" if p1_st is None else p1_st.name
+                    p2_name = "Destination" if p2_st is None else p2_st.name
+                    unbridgeable_gap = {
+                        "from_point": p1_name,
+                        "to_point": p2_name,
+                        "gap_dist_km": round(gap_dist_m / 1000.0, 1),
+                        "allowed_dist_km": round(allowed_dist_m / 1000.0, 1),
+                        "deficit_km": round((gap_dist_m - allowed_dist_m) / 1000.0, 1),
+                        "deficit_kwh": round(
+                            (gap_dist_m - allowed_dist_m) * car.consumption_kwh_per_km / 1000.0, 2
+                        ),
+                    }
 
         if not gap_violated:
             # All gaps successfully bridged!
@@ -191,9 +205,13 @@ def filter_stations_greedy(
     final_kept = sorted([stations_by_id[sid] for sid in kept_ids], key=project_station_distance)
     final_dropped = [st for st in stations if st.id not in kept_ids]
 
-    return final_kept, final_dropped, {
+    audit_res: dict[str, Any] = {
         "feasible_without_stops": False,
         "reinstated_count": reinstated_count,
         "kept_count": len(final_kept),
         "dropped_count": len(final_dropped),
     }
+    if unbridgeable_gap is not None:
+        audit_res["unbridgeable_gap"] = unbridgeable_gap
+
+    return final_kept, final_dropped, audit_res

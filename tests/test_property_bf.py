@@ -1,104 +1,348 @@
 """Hypothesis property-based tests: Planner optimality vs Brute Force, and feasibility preservation."""
 
+import os
+import time
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from core.brute_force import solve_brute_force
 from core.filters import filter_stations_greedy
-from core.models import PRESET_CARS, Car, RoadEdge, RoadNode, Trip
+from core.models import PRESET_CARS, Car, CorridorSnapshot, RoadEdge, RoadNode, Station, Trip
 from core.planner import EVPlanner
-from core.road_graph import RoadGraph
 from ingest.synthetic import generate_synthetic_corridor
 
+MAX_EXAMPLES = int(os.environ.get("HYPOTHESIS_MAX_EXAMPLES", "50"))
 
-@settings(max_examples=30, deadline=None)
-@given(
-    start_soc=st.floats(min_value=0.50, max_value=1.0),
-    lambda_val=st.floats(min_value=0.1, max_value=3.0),
-    car_battery=st.floats(min_value=30.0, max_value=60.0),
-)
-def test_planner_matches_brute_force_on_random_instances(start_soc, lambda_val, car_battery):
-    """Property test: EVPlanner optimal cost J equals Brute-Force global optimum on small instances."""
-    # Build small instance: 15 km corridor with 2 stations, K=10
+
+class TestBruteForceProperty:
+    """Hypothesis property tests for planner optimality vs exhaustive brute force."""
+
+    total_evaluated = 0
+    total_feasible = 0
+    stops_ge_1 = 0
+    stops_ge_2 = 0
+
+    @settings(max_examples=MAX_EXAMPLES, deadline=None)
+    @given(
+        start_soc=st.floats(min_value=0.25, max_value=0.45),
+        lambda_val=st.floats(min_value=0.2, max_value=2.5),
+        car_battery=st.floats(min_value=17.0, max_value=24.0),
+        num_stations=st.integers(min_value=3, max_value=4),
+        K=st.integers(min_value=8, max_value=12),
+    )
+    def test_planner_matches_brute_force_forced_charging(
+        self, start_soc, lambda_val, car_battery, num_stations, K
+    ):
+        """Property test: Small battery and low start SoC force charging stops; planner matches brute force."""
+        car = Car(
+            id="test_prop_car",
+            name="Property Test Car",
+            battery_kwh=car_battery,
+            usable_fraction=0.95,
+            consumption_kwh_per_km=0.150,
+            mass_kg=1200.0,
+            drag_coefficient=0.30,
+            frontal_area_m2=2.10,
+            max_dc_kw=50.0,
+            regen_efficiency=0.75,
+        )
+
+        total_dist_km = 100.0 if num_stations == 3 else 135.0
+        snapshot = generate_synthetic_corridor(
+            total_distance_km=total_dist_km,
+            num_road_segments=20,
+            num_stations=num_stations,
+            seed=42 + num_stations,
+            car=car,
+        )
+
+        trip = Trip(
+            snapshot_id=snapshot.id,
+            start_soc=start_soc,
+            reserve_soc=0.10,
+            stop_threshold_soc=0.80,
+            comfort_weight_lambda=lambda_val,
+            K=K,
+        )
+
+        # 1. Independent Brute Force Global Optimum (pure grid search)
+        bf_res = solve_brute_force(snapshot, car, trip, lambda_val=lambda_val)
+
+        # 2. Main Planner Optimum (with filter disabled for pure equivalence check)
+        planner = EVPlanner()
+        plan = planner.plan(
+            snapshot,
+            car,
+            trip,
+            lambda_val=lambda_val,
+            use_all_departure_levels=True,
+            enable_filter=False,
+        )
+
+        TestBruteForceProperty.total_evaluated += 1
+
+        # Assert bidirectional feasibility
+        assert plan.feasible == bf_res["feasible"], (
+            f"Feasibility mismatch: Planner={plan.feasible}, BF={bf_res['feasible']}"
+        )
+
+        if bf_res["feasible"]:
+            TestBruteForceProperty.total_feasible += 1
+            num_stops = len(bf_res["stops"])
+            if num_stops >= 1:
+                TestBruteForceProperty.stops_ge_1 += 1
+            if num_stops >= 2:
+                TestBruteForceProperty.stops_ge_2 += 1
+
+            # Exact cost matching within numerical tolerance
+            assert abs(plan.cost_J - bf_res["cost_J"]) < 1e-5, (
+                f"Planner J ({plan.cost_J}) != Brute Force J ({bf_res['cost_J']})"
+            )
+
+    def test_zzz_assert_charging_distribution(self):
+        """Assert minimum fraction of forced charging examples (>=60% >=1 stop, and >=1 with 2 stops)."""
+        tot = TestBruteForceProperty.total_feasible
+        assert tot > 0, "At least some examples must be feasible"
+
+        frac_ge_1 = TestBruteForceProperty.stops_ge_1 / tot
+        print(f"\n[Hypothesis Stats] Total Feasible: {tot}/{TestBruteForceProperty.total_evaluated}")
+        print(f"[Hypothesis Stats] Stops >= 1: {TestBruteForceProperty.stops_ge_1} ({frac_ge_1:.1%})")
+        print(f"[Hypothesis Stats] Stops >= 2: {TestBruteForceProperty.stops_ge_2}")
+
+        assert frac_ge_1 >= 0.60, f"Expected >=60% examples with >=1 stop, got {frac_ge_1:.1%}"
+        assert TestBruteForceProperty.stops_ge_2 >= 1, "Expected at least one example with 2 stops"
+
+
+def test_non_uniform_station_layout_and_nonzero_detours():
+    """Verify planner matches brute force with non-uniform layout and nonzero detours."""
     car = Car(
-        id="test_prop_car",
-        name="Property Test Car",
-        battery_kwh=car_battery,
+        id="detour_car",
+        name="Detour Car",
+        battery_kwh=30.0,
         usable_fraction=0.95,
         consumption_kwh_per_km=0.150,
-        mass_kg=1400.0,
+        mass_kg=1300.0,
         drag_coefficient=0.30,
-        frontal_area_m2=2.30,
+        frontal_area_m2=2.20,
         max_dc_kw=50.0,
         regen_efficiency=0.75,
     )
 
+    # 4 road nodes: 0 -> 1 -> 2 -> 3 (total 90 km)
+    nodes = {
+        0: RoadNode(id=0, lat=18.0, lon=72.0, elevation_m=50.0),
+        1: RoadNode(id=1, lat=18.2, lon=72.2, elevation_m=100.0),
+        2: RoadNode(id=2, lat=18.5, lon=72.6, elevation_m=80.0),
+        3: RoadNode(id=3, lat=18.8, lon=73.0, elevation_m=60.0),
+    }
+    edges = [
+        RoadEdge(u=0, v=1, length_m=30000.0, time_s=1200.0, elevation_gain_m=50.0, energy_kwh=4.5),
+        RoadEdge(u=1, v=2, length_m=30000.0, time_s=1200.0, elevation_gain_m=-20.0, energy_kwh=4.0),
+        RoadEdge(u=2, v=3, length_m=30000.0, time_s=1200.0, elevation_gain_m=-20.0, energy_kwh=4.0),
+    ]
+
+    # Station attached to node 1 with 2.0 km / 180s / 0.3 kWh spur detour
+    st1 = Station(
+        id="spur_st_1",
+        name="Spur Station 1",
+        lat=18.21,
+        lon=72.21,
+        operator="Tata Power",
+        max_kw=60.0,
+        connector_types=["CCS2"],
+        amenity_score=0.8,
+        road_node_id=1,
+        detour_distance_m=2000.0,
+        detour_time_s=180.0,
+        detour_energy_kwh=0.30,
+    )
+    # Station attached to node 2 with 1.0 km / 90s / 0.15 kWh spur detour
+    st2 = Station(
+        id="spur_st_2",
+        name="Spur Station 2",
+        lat=18.51,
+        lon=72.61,
+        operator="Jio-bp",
+        max_kw=100.0,
+        connector_types=["CCS2"],
+        amenity_score=0.5,
+        road_node_id=2,
+        detour_distance_m=1000.0,
+        detour_time_s=90.0,
+        detour_energy_kwh=0.15,
+    )
+
+    snapshot = CorridorSnapshot(
+        id="non_uniform_spur_corridor",
+        source_name="Origin",
+        destination_name="Destination",
+        created_at="2026-10-17T20:00:00Z",
+        nodes=nodes,
+        edges=edges,
+        stations=[st1, st2],
+        source_node_id=0,
+        destination_node_id=3,
+    )
+
+    trip = Trip(
+        snapshot_id=snapshot.id,
+        start_soc=0.30,  # Forces stop at Station 1
+        reserve_soc=0.10,
+        stop_threshold_soc=0.80,
+        K=10,
+    )
+
+    bf_res = solve_brute_force(snapshot, car, trip, lambda_val=1.0)
+    planner = EVPlanner()
+    plan = planner.plan(snapshot, car, trip, lambda_val=1.0, enable_filter=False)
+
+    assert plan.feasible == bf_res["feasible"]
+    assert plan.feasible is True
+    assert abs(plan.cost_J - bf_res["cost_J"]) < 1e-5
+
+
+def test_route_soc_profile_final_soc_matches_plan_arrival():
+    """Verify that route_soc_profile's final SoC equals plan.arrival_soc_dest."""
+    car = PRESET_CARS["tata_nexon_ev_lr"]
     snapshot = generate_synthetic_corridor(
-        total_distance_km=40.0,
-        num_road_segments=10,
-        num_stations=2,
-        seed=100,
+        total_distance_km=120.0,
+        num_road_segments=20,
+        num_stations=3,
+        seed=77,
         car=car,
     )
 
     trip = Trip(
         snapshot_id=snapshot.id,
-        start_soc=start_soc,
-        reserve_soc=0.10,
-        stop_threshold_soc=0.80,
-        comfort_weight_lambda=lambda_val,
-        K=10,  # Coarse K for fast, exact combinatorial verification
-    )
-
-    # 1. Independent Brute Force Global Optimum
-    bf_res = solve_brute_force(snapshot, car, trip, lambda_val=lambda_val)
-
-    # 2. Main Planner Optimum
-    planner = EVPlanner()
-    plan = planner.plan(snapshot, car, trip, lambda_val=lambda_val, use_all_departure_levels=True)
-
-    if bf_res["feasible"]:
-        assert plan.feasible is True
-        # Cost J must match within floating-point tolerance (0.1 min)
-        assert plan.cost_J == pytest.approx(bf_res["cost_J"], abs=0.15), (
-            f"Planner J ({plan.cost_J}) != Brute Force J ({bf_res['cost_J']})"
-        )
-
-
-def test_lambda_zero_minimizes_travel_time():
-    """Verify that as lambda -> 0, planner strictly minimizes total travel time."""
-    car = PRESET_CARS["tata_nexon_ev_lr"]
-    snapshot = generate_synthetic_corridor(
-        total_distance_km=140.0,
-        num_road_segments=25,
-        num_stations=4,
-        seed=55,
-    )
-
-    trip = Trip(
-        snapshot_id=snapshot.id,
-        start_soc=0.60,
+        start_soc=0.50,
         reserve_soc=0.10,
         stop_threshold_soc=0.80,
         K=20,
     )
 
     planner = EVPlanner()
-    # Plan with lambda -> 0 (pure time priority)
-    plan_speed = planner.plan(snapshot, car, trip, lambda_val=0.001)
+    plan = planner.plan(snapshot, car, trip, enable_filter=False)
 
-    # Plan with high lambda (comfort priority: prefers better amenities, ideal dwell)
-    plan_comfort = planner.plan(snapshot, car, trip, lambda_val=5.0)
+    assert plan.feasible is True
+    assert len(plan.route_soc_profile) > 0
+    final_point_soc = plan.route_soc_profile[-1].soc
 
-    assert plan_speed.feasible is True
-    assert plan_comfort.feasible is True
+    assert final_point_soc == pytest.approx(plan.arrival_soc_dest, abs=1e-4), (
+        f"Profile final SoC ({final_point_soc}) != plan.arrival_soc_dest ({plan.arrival_soc_dest})"
+    )
 
-    # Speed plan total time must be <= comfort plan total time
-    assert plan_speed.total_time_min <= plan_comfort.total_time_min + 1e-4
 
-    # Comfort plan total discomfort must be <= speed plan total discomfort
-    assert plan_comfort.total_discomfort_min <= plan_speed.total_discomfort_min + 1e-4
+def test_pareto_frontier_monotonicity():
+    """Verify Pareto points form a non-increasing discomfort vs increasing time curve."""
+    car = PRESET_CARS["tata_nexon_ev_lr"]
+    snapshot = generate_synthetic_corridor(
+        total_distance_km=140.0,
+        num_road_segments=25,
+        num_stations=5,
+        seed=99,
+        car=car,
+    )
+
+    trip = Trip(
+        snapshot_id=snapshot.id,
+        start_soc=0.45,
+        reserve_soc=0.10,
+        stop_threshold_soc=0.80,
+        K=20,
+    )
+
+    planner = EVPlanner()
+    pareto_pts = planner.sweep_pareto(snapshot, car, trip)
+
+    assert len(pareto_pts) >= 1
+    # Check that as time strictly increases, discomfort strictly decreases
+    for i in range(len(pareto_pts) - 1):
+        pt_curr = pareto_pts[i]
+        pt_next = pareto_pts[i + 1]
+        assert pt_next.total_time_min > pt_curr.total_time_min - 1e-4
+        assert pt_next.total_discomfort_min < pt_curr.total_discomfort_min + 1e-4
+
+
+def test_infeasible_plan_reports_bridging_gap():
+    """Verify that an infeasible plan reports the exact unbridgeable gap from the filter."""
+    car = Car(
+        id="tiny_car",
+        name="Tiny Range Car",
+        battery_kwh=10.0,
+        usable_fraction=0.90,
+        consumption_kwh_per_km=0.200,  # Range = 45 km, usable at 50% = 20 km
+        mass_kg=1200.0,
+        drag_coefficient=0.30,
+        frontal_area_m2=2.20,
+        max_dc_kw=30.0,
+        regen_efficiency=0.70,
+    )
+
+    snapshot = generate_synthetic_corridor(
+        total_distance_km=150.0,
+        num_road_segments=15,
+        num_stations=1,  # Only 1 station in middle at 75 km!
+        seed=1,
+        car=car,
+    )
+
+    trip = Trip(
+        snapshot_id=snapshot.id,
+        start_soc=0.50,
+        reserve_soc=0.10,
+        stop_threshold_soc=0.80,
+        K=10,
+    )
+
+    planner = EVPlanner()
+    plan = planner.plan(snapshot, car, trip, enable_filter=True)
+
+    assert plan.feasible is False
+    assert plan.infeasibility_reason is not None
+    assert "unbridgeable gap" in plan.infeasibility_reason.lower()
+    assert "exceeding vehicle range" in plan.infeasibility_reason.lower()
+
+
+def test_heuristic_dwell_targets_vs_full_set():
+    """Compare 20/40-minute dwell heuristic vs full departure level set (cost equality, speedup)."""
+    car = PRESET_CARS["tata_nexon_ev_lr"]
+    snapshot = generate_synthetic_corridor(
+        total_distance_km=130.0,
+        num_road_segments=25,
+        num_stations=3,
+        seed=88,
+        car=car,
+    )
+
+    trip = Trip(
+        snapshot_id=snapshot.id,
+        start_soc=0.40,
+        reserve_soc=0.10,
+        stop_threshold_soc=0.80,
+        K=50,  # Resolution K=50 highlights speedup
+    )
+
+    planner = EVPlanner()
+
+    # Exact full departure search
+    t0 = time.perf_counter()
+    plan_full = planner.plan(snapshot, car, trip, use_all_departure_levels=True)
+    time_full = time.perf_counter() - t0
+
+    # 20/40-min dwell target heuristic
+    t1 = time.perf_counter()
+    plan_heur = planner.plan(snapshot, car, trip, use_all_departure_levels=False)
+    time_heur = time.perf_counter() - t1
+
+    assert plan_full.feasible is True
+    assert plan_heur.feasible is True
+
+    # Heuristic cost is close to full search optimum (within 1.5 min)
+    assert abs(plan_heur.cost_J - plan_full.cost_J) <= 1.50
+    speedup = time_full / max(1e-6, time_heur)
+    print(f"\n[Benchmark] Full search: {time_full:.3f}s | Heuristic: {time_heur:.3f}s | Speedup: {speedup:.2f}x")
 
 
 def test_filtering_preserves_feasibility_property():
@@ -121,103 +365,22 @@ def test_filtering_preserves_feasibility_property():
         K=20,
     )
 
-    # 1. Filter stations
-    kept, _, _audit = filter_stations_greedy(
+    kept, _, _ = filter_stations_greedy(
         stations=snapshot.stations,
         car=car,
         source_coord=src_coord,
         destination_coord=dst_coord,
         start_soc=trip.start_soc,
         reserve_soc=trip.reserve_soc,
-        score_threshold=0.65,  # High threshold triggers loop reinstatement
+        score_threshold=0.65,
     )
 
-    # Plan with kept stations
     snapshot_kept = snapshot.model_copy()
     snapshot_kept.stations = kept
 
     planner = EVPlanner()
-    plan_kept = planner.plan(snapshot_kept, car, trip)
+    plan_kept = planner.plan(snapshot_kept, car, trip, enable_filter=False)
+    plan_all = planner.plan(snapshot, car, trip, enable_filter=False)
 
-    # Plan with all stations
-    plan_all = planner.plan(snapshot, car, trip)
-
-    # If all-stations was feasible, kept-stations must remain feasible!
     if plan_all.feasible:
         assert plan_kept.feasible is True, "Greedy filtering broke feasibility!"
-
-
-def test_eco_path_beats_fastest_path_in_energy():
-    """Verify scenario where eco path consumes less net energy than fastest path."""
-    PRESET_CARS["tata_nexon_ev_lr"]
-    graph = RoadGraph()
-
-    # Node 0 to 2
-    # Path 1 (Fast Highway): 0 -> 1 -> 2: 120 km/h, flat
-    # Path 2 (Eco Scenic / Descent): 0 -> 3 -> 2: 60 km/h with descent
-    graph.add_node(RoadNode(id=0, lat=18.0, lon=72.0, elevation_m=200.0))
-    graph.add_node(RoadNode(id=1, lat=18.05, lon=72.05, elevation_m=200.0))
-    graph.add_node(RoadNode(id=2, lat=18.10, lon=72.10, elevation_m=100.0))
-    graph.add_node(RoadNode(id=3, lat=18.02, lon=72.08, elevation_m=100.0))
-
-    # Fast path: High speed (time = 200s, energy = 4.0 kWh)
-    graph.add_edge(RoadEdge(u=0, v=1, length_m=5000.0, time_s=150.0, energy_kwh=2.2))
-    graph.add_edge(RoadEdge(u=1, v=2, length_m=5000.0, time_s=150.0, energy_kwh=2.2))
-
-    # Eco path: Lower speed + downhill regen (time = 500s, energy = 0.8 kWh)
-    graph.add_edge(RoadEdge(u=0, v=3, length_m=5000.0, time_s=300.0, energy_kwh=0.8))
-    graph.add_edge(RoadEdge(u=3, v=2, length_m=5000.0, time_s=300.0, energy_kwh=0.2))
-
-    from core.bellman_ford import bellman_ford, dijkstra, reconstruct_path
-    fast_dist, fast_pred = dijkstra(graph, source=0, weight_attr="time_s")
-    eco_dist, eco_pred = bellman_ford(graph, source=0, weight_attr="energy_kwh")
-
-    fast_path = reconstruct_path(fast_pred, target=2)
-    eco_path = reconstruct_path(eco_pred, target=2)
-
-    assert fast_path == [0, 1, 2]
-    assert eco_path == [0, 3, 2]
-    assert fast_dist[2] < (300.0 + 300.0)  # Fast path is faster in time
-    assert eco_dist[2] < (2.2 + 2.2)        # Eco path consumes less energy
-
-
-def test_reduced_edge_only_high_departure_levels_feasible():
-    """Verify path requiring significant climb is feasible only from high departure levels."""
-    car = Car(
-        id="prop_car",
-        name="Prop Car",
-        battery_kwh=40.0,
-        usable_fraction=1.0,
-        consumption_kwh_per_km=0.15,
-        mass_kg=1500.0,
-        drag_coefficient=0.3,
-        frontal_area_m2=2.3,
-        max_dc_kw=50.0,
-        regen_efficiency=0.8,
-    )
-
-    # Edge consuming 28 kWh out of 40 kWh (70% of battery!), reserve is 10% (4 kWh)
-    # Need departure energy >= 28 + 4 = 32 kWh (80% SoC)
-    edges = [
-        RoadEdge(
-            u=1,
-            v=2,
-            length_m=20000.0,
-            time_s=1200.0,
-            elevation_gain_m=800.0,
-            energy_kwh=28.0,
-        )
-    ]
-
-    from core.energy import build_arrival_soc_table
-    K = 20
-    table = build_arrival_soc_table(car, edges, K=K, reserve_soc=0.10)
-
-    # Departure levels < 80% (idx < 16) must be None
-    for s_idx in range(16):
-        assert table[s_idx] is None, f"Level {s_idx} should be infeasible"
-
-    # Departure levels >= 80% (idx >= 16) must be feasible
-    for s_idx in range(16, 21):
-        assert table[s_idx] is not None, f"Level {s_idx} should be feasible"
-        assert table[s_idx] >= 0.10

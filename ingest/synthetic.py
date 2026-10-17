@@ -167,6 +167,10 @@ def generate_synthetic_corridor(
         from ingest.stations import simulate_station_reliability
         rel = simulate_station_reliability(op, f"synth_{s_idx}_{op}")
 
+        detour_round_trip_m = round(detour_dist_km * 2000.0, 1)
+        detour_time_s = round(detour_round_trip_m / (35.0 / 3.6), 1)
+        detour_energy_kwh = round(eval_car.consumption_kwh_per_km * (detour_dist_km * 2.0), 4)
+
         station = Station(
             id=f"synth_stat_{s_idx + 1:02d}",
             name=f"{op} - Highway Stop {s_idx + 1}",
@@ -179,6 +183,10 @@ def generate_synthetic_corridor(
             is_reliability_simulated=True,
             amenities=amenities,
             amenity_score=amenity_sc,
+            road_node_id=base_node.id,
+            detour_distance_m=detour_round_trip_m,
+            detour_time_s=detour_time_s,
+            detour_energy_kwh=detour_energy_kwh,
         )
         stations.append(station)
 
@@ -203,6 +211,8 @@ def generate_synthetic_corridor(
         nodes=nodes,
         edges=edges,
         stations=stations,
+        source_node_id=0,
+        destination_node_id=num_road_segments,
         metadata=metadata,
     )
 

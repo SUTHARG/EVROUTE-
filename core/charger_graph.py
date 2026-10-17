@@ -66,6 +66,10 @@ def map_stations_to_road_nodes(
     nodes = road_graph.nodes
 
     for st in stations:
+        if st.road_node_id is not None and st.road_node_id in nodes:
+            station_node_map[st.id] = st.road_node_id
+            continue
+
         min_dist = float("inf")
         closest_id = 0
         for node_id, node in nodes.items():
@@ -163,6 +167,30 @@ def build_reduced_charger_graph(
                 path_edges: list[RoadEdge] = []
                 coords: list[tuple[float, float]] = []
 
+                # 1. Outbound spur from u (if u is a station)
+                if u_id in reduced_graph.stations:
+                    u_st = reduced_graph.stations[u_id]
+                    if u_st.detour_time_s > 0 or u_st.detour_energy_kwh > 0 or u_st.detour_distance_m > 0:
+                        out_d = u_st.detour_distance_m / 2.0
+                        out_t = u_st.detour_time_s / 2.0
+                        out_e = (
+                            u_st.detour_energy_kwh / 2.0
+                            if u_st.detour_energy_kwh > 0
+                            else (car.consumption_kwh_per_km * (out_d / 1000.0))
+                        )
+                        path_edges.append(
+                            RoadEdge(
+                                u=u_node,
+                                v=u_node,
+                                length_m=out_d,
+                                time_s=max(0.1, out_t),
+                                elevation_gain_m=0.0,
+                                energy_kwh=out_e,
+                            )
+                        )
+                        coords.append((u_st.lat, u_st.lon))
+
+                # 2. Highway road edges along v_path
                 for k in range(len(v_path) - 1):
                     pair = (v_path[k], v_path[k + 1])
                     if pair in edge_map:
@@ -174,6 +202,29 @@ def build_reduced_charger_graph(
                 last_node = road_graph.nodes.get(v_path[-1])
                 if last_node:
                     coords.append((last_node.lat, last_node.lon))
+
+                # 3. Inbound spur into v (if v is a station)
+                if v_id in reduced_graph.stations:
+                    v_st = reduced_graph.stations[v_id]
+                    if v_st.detour_time_s > 0 or v_st.detour_energy_kwh > 0 or v_st.detour_distance_m > 0:
+                        in_d = v_st.detour_distance_m / 2.0
+                        in_t = v_st.detour_time_s / 2.0
+                        in_e = (
+                            v_st.detour_energy_kwh / 2.0
+                            if v_st.detour_energy_kwh > 0
+                            else (car.consumption_kwh_per_km * (in_d / 1000.0))
+                        )
+                        path_edges.append(
+                            RoadEdge(
+                                u=v_node,
+                                v=v_node,
+                                length_m=in_d,
+                                time_s=max(0.1, in_t),
+                                elevation_gain_m=0.0,
+                                energy_kwh=in_e,
+                            )
+                        )
+                        coords.append((v_st.lat, v_st.lon))
 
                 if not path_edges:
                     continue

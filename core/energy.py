@@ -7,6 +7,8 @@ prefix-checked battery feasibility, and 100% SoC clamping.
 
 from __future__ import annotations
 
+import math
+
 from core.models import Car, RoadEdge
 
 # Physical constants
@@ -241,3 +243,34 @@ def compute_path_energy_summary(
         peak_need_kwh = max(peak_need_kwh, cumulative_energy)
 
     return total_time_s, cumulative_energy, peak_need_kwh
+
+
+def discretize_soc_level(soc: float, K: int, eps: float = 1e-9) -> int:
+    """Discretize continuous SoC fraction into discrete integer level in {0, ..., K}.
+
+    Uses floor(soc * K + eps) clamped to [0, K] to prevent floating-point under-binning.
+
+    Complexity:
+        Time: O(1)
+        Space: O(1)
+
+    Args:
+        soc: Battery SoC fraction in [0, 1].
+        K: Discretization resolution intervals.
+        eps: Small epsilon (default 1e-9) to handle floating-point precision.
+
+    Returns:
+        Integer discretization level in {0, ..., K}.
+    """
+    raw_level = math.floor(soc * K + eps)
+    return max(0, min(K, raw_level))
+
+
+def level_to_soc(level: int, K: int) -> float:
+    """Convert integer level in {0, ..., K} back to discrete SoC fraction.
+
+    Complexity:
+        Time: O(1)
+        Space: O(1)
+    """
+    return level / K

@@ -189,6 +189,18 @@ class Station(BaseModel):
     source: str = Field(
         "osm", description="Provenance source of charger data: 'osm', 'ocm', or 'synthetic'"
     )
+    road_node_id: int | None = Field(
+        None, description="Physical road network attachment node ID"
+    )
+    detour_distance_m: float = Field(
+        0.0, description="Round-trip spur detour distance in meters"
+    )
+    detour_time_s: float = Field(
+        0.0, description="Round-trip spur detour duration in seconds"
+    )
+    detour_energy_kwh: float = Field(
+        0.0, description="Round-trip spur detour energy in kWh"
+    )
 
 
 class RoadNode(BaseModel):
@@ -426,4 +438,6 @@ class CorridorSnapshot(BaseModel):
     nodes: dict[int, RoadNode]
     edges: list[RoadEdge]
     stations: list[Station]
+    source_node_id: int | None = Field(None, description="Starting road network node ID")
+    destination_node_id: int | None = Field(None, description="Destination road network node ID")
     metadata: dict[str, Any] = Field(default_factory=dict)

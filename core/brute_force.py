@@ -9,11 +9,13 @@ from __future__ import annotations
 import itertools
 from typing import Any
 
+from core.bellman_ford import dijkstra, reconstruct_path
 from core.charging import charge_time_min
 from core.comfort import compute_dwell_discomfort
-from core.energy import simulate_path_soc
+from core.energy import discretize_soc_level, level_to_soc, simulate_path_soc
 from core.models import Car, CorridorSnapshot, RoadEdge, Station, Trip
 from core.road_graph import RoadGraph
+from ingest.route import haversine_distance_m
 
 
 def solve_brute_force(
@@ -43,49 +45,130 @@ def solve_brute_force(
     reserve_soc = trip.reserve_soc
 
     road_graph = RoadGraph.from_snapshot(snapshot)
-    num_road_nodes = len(snapshot.nodes)
-    source_node = 0
-    dest_node = num_road_nodes - 1
+    source_node = (
+        snapshot.source_node_id
+        if snapshot.source_node_id is not None
+        else min(snapshot.nodes.keys())
+    )
+    dest_node = (
+        snapshot.destination_node_id
+        if snapshot.destination_node_id is not None
+        else max(snapshot.nodes.keys())
+    )
 
-    # In synthetic corridor, road edges form a linear path 0 -> 1 -> ... -> dest
-    # Group edges into contiguous blocks:
-    # Segment 0: 0 -> station_1_node
-    # Segment i: station_i_node -> station_{i+1}_node
-    # Segment last: station_k_node -> dest_node
-    # For synthetic corridor, station i is attached to node int(((i+1)/(n+1)) * segments)
-    step_frac = 1.0 / (n_stations + 1)
-    st_nodes = [
-        round(((i + 1) * step_frac) * (num_road_nodes - 1))
-        for i in range(n_stations)
-    ]
+    # Map each station to its attachment road node
+    st_nodes: list[int] = []
+    for st in stations:
+        if st.road_node_id is not None and st.road_node_id in snapshot.nodes:
+            st_nodes.append(st.road_node_id)
+        else:
+            closest_id = min(
+                snapshot.nodes.keys(),
+                key=lambda nid: haversine_distance_m(
+                    st.lat, st.lon, snapshot.nodes[nid].lat, snapshot.nodes[nid].lon
+                ),
+            )
+            st_nodes.append(closest_id)
 
-    # Pre-extract road edge slices between milestone nodes
+    # Edge lookup map
     edge_map = {(e.u, e.v): e for e in road_graph.get_edges()}
 
-    def get_path_edges(u: int, v: int) -> list[RoadEdge]:
-        edges = []
-        for curr in range(u, v):
-            if (curr, curr + 1) in edge_map:
-                edges.append(edge_map[(curr, curr + 1)])
+    def get_highway_path_edges(u: int, v: int) -> list[RoadEdge]:
+        """Compute shortest driving path edges between road nodes u and v."""
+        if u == v:
+            return []
+        _, preds = dijkstra(road_graph, source=u, weight_attr="time_s")
+        node_seq = reconstruct_path(preds, target=v)
+        edges: list[RoadEdge] = []
+        for i in range(len(node_seq) - 1):
+            pair = (node_seq[i], node_seq[i + 1])
+            if pair in edge_map:
+                edges.append(edge_map[pair])
         return edges
 
     best_J = float("inf")
     best_result: dict[str, Any] = {"feasible": False, "cost_J": float("inf")}
 
-    start_s = min(K, max(0, round(trip.start_soc * K)))
+    start_s_lvl = discretize_soc_level(trip.start_soc, K)
 
     # Enumerate all 2^N subsets of stations to stop and recharge at
     for subset_len in range(n_stations + 1):
         for chosen_indices in itertools.combinations(range(n_stations), subset_len):
             # Milestones sequence: source -> st_i1 -> ... -> st_im -> dest
-            stop_nodes = [st_nodes[idx] for idx in chosen_indices]
-            route_milestones = [source_node] + stop_nodes + [dest_node]
+            # Milestone descriptors: ('source', source_node, None) or ('st', st_node, st_obj) or ('dest', dest_node, None)
+            milestones: list[tuple[str, int, Station | None]] = [("source", source_node, None)]
+            for idx in chosen_indices:
+                milestones.append(("st", st_nodes[idx], stations[idx]))
+            milestones.append(("dest", dest_node, None))
 
-            # Road segments between consecutive milestones
-            road_segments = [
-                get_path_edges(route_milestones[m], route_milestones[m + 1])
-                for m in range(len(route_milestones) - 1)
-            ]
+            # Build road segments between consecutive milestones including spur detours
+            road_segments: list[list[RoadEdge]] = []
+            for m in range(len(milestones) - 1):
+                m_curr_type, m_curr_node, m_curr_st = milestones[m]
+                m_next_type, m_next_node, m_next_st = milestones[m + 1]
+
+                seg_edges: list[RoadEdge] = []
+
+                # 1. Outbound spur from current milestone (if it's a station)
+                if (
+                    m_curr_type == "st"
+                    and m_curr_st is not None
+                    and (
+                        m_curr_st.detour_time_s > 0
+                        or m_curr_st.detour_energy_kwh > 0
+                        or m_curr_st.detour_distance_m > 0
+                    )
+                ):
+                    out_d = m_curr_st.detour_distance_m / 2.0
+                    out_t = m_curr_st.detour_time_s / 2.0
+                    out_e = (
+                        m_curr_st.detour_energy_kwh / 2.0
+                        if m_curr_st.detour_energy_kwh > 0
+                        else (car.consumption_kwh_per_km * (out_d / 1000.0))
+                    )
+                    seg_edges.append(
+                        RoadEdge(
+                            u=m_curr_node,
+                            v=m_curr_node,
+                            length_m=out_d,
+                            time_s=max(0.1, out_t),
+                            elevation_gain_m=0.0,
+                            energy_kwh=out_e,
+                        )
+                    )
+
+                # 2. Highway edges from m_curr_node to m_next_node
+                seg_edges.extend(get_highway_path_edges(m_curr_node, m_next_node))
+
+                # 3. Inbound spur into next milestone (if it's a station)
+                if (
+                    m_next_type == "st"
+                    and m_next_st is not None
+                    and (
+                        m_next_st.detour_time_s > 0
+                        or m_next_st.detour_energy_kwh > 0
+                        or m_next_st.detour_distance_m > 0
+                    )
+                ):
+                    in_d = m_next_st.detour_distance_m / 2.0
+                    in_t = m_next_st.detour_time_s / 2.0
+                    in_e = (
+                        m_next_st.detour_energy_kwh / 2.0
+                        if m_next_st.detour_energy_kwh > 0
+                        else (car.consumption_kwh_per_km * (in_d / 1000.0))
+                    )
+                    seg_edges.append(
+                        RoadEdge(
+                            u=m_next_node,
+                            v=m_next_node,
+                            length_m=in_d,
+                            time_s=max(0.1, in_t),
+                            elevation_gain_m=0.0,
+                            energy_kwh=in_e,
+                        )
+                    )
+
+                road_segments.append(seg_edges)
 
             # Driving times
             seg_drive_times_min = [
@@ -95,24 +178,26 @@ def solve_brute_force(
 
             if not chosen_indices:
                 # Direct travel without any charging stops
-                arr_soc = simulate_path_soc(car, road_segments[0], start_s / K, reserve_soc)
+                arr_soc = simulate_path_soc(
+                    car, road_segments[0], level_to_soc(start_s_lvl, K), reserve_soc
+                )
                 if arr_soc is not None:
                     cost_J = total_drive_time_min
                     if cost_J < best_J:
                         best_J = cost_J
                         best_result = {
                             "feasible": True,
-                            "cost_J": round(cost_J, 3),
-                            "total_time_min": round(total_drive_time_min, 2),
+                            "cost_J": round(cost_J, 6),
+                            "total_time_min": round(total_drive_time_min, 6),
                             "total_discomfort_min": 0.0,
                             "stops": [],
                         }
                 continue
 
-            # If there are stops, recursively or iteratively search all discrete departure levels
+            # If there are stops, search all discrete departure levels
             def search_charge_levels(
                 stop_idx: int,
-                curr_s_in: float,
+                curr_dep_lvl: int,
                 accum_chg_time: float,
                 accum_discomfort: float,
                 current_stops: list[dict[str, Any]],
@@ -122,74 +207,80 @@ def solve_brute_force(
             ) -> None:
                 nonlocal best_J, best_result
 
-                if stop_idx == len(indices):
-                    # Final drive to destination
-                    final_arr_soc = simulate_path_soc(
-                        car, segments[-1], curr_s_in, reserve_soc
-                    )
-                    if final_arr_soc is not None:
-                        total_time = drive_time + accum_chg_time
-                        cost_J = total_time + lambda_val * accum_discomfort
-                        if cost_J < best_J:
-                            best_J = cost_J
-                            best_result = {
-                                "feasible": True,
-                                "cost_J": round(cost_J, 3),
-                                "total_time_min": round(total_time, 2),
-                                "total_discomfort_min": round(accum_discomfort, 2),
-                                "stops": list(current_stops),
-                            }
+                # Drive along segment stop_idx to reach the stop (or destination)
+                next_seg = segments[stop_idx]
+                arr_soc = simulate_path_soc(
+                    car, next_seg, level_to_soc(curr_dep_lvl, K), reserve_soc
+                )
+                if arr_soc is None:
                     return
 
-                # At stop_idx
+                arr_lvl = discretize_soc_level(arr_soc, K)
+
+                if stop_idx == len(indices):
+                    # Reached destination
+                    total_time = drive_time + accum_chg_time
+                    cost_J = total_time + lambda_val * accum_discomfort
+                    if cost_J < best_J:
+                        best_J = cost_J
+                        best_result = {
+                            "feasible": True,
+                            "cost_J": round(cost_J, 6),
+                            "total_time_min": round(total_time, 6),
+                            "total_discomfort_min": round(accum_discomfort, 6),
+                            "stops": list(current_stops),
+                        }
+                    return
+
+                # At stop_idx (0-indexed into indices)
                 st_real_idx = indices[stop_idx]
                 station = stations[st_real_idx]
-                s_in_lvl = round(curr_s_in * K)
+                s_in = level_to_soc(arr_lvl, K)
 
-                # Enumerate all discrete departure levels s_dep > s_in_lvl
-                for s_dep_lvl in range(s_in_lvl + 1, K + 1):
-                    s_dep = s_dep_lvl / K
-                    # Simulate next driving segment to the next stop
-                    next_seg = segments[stop_idx + 1]
-                    next_arr_soc = simulate_path_soc(car, next_seg, s_dep, reserve_soc)
-                    if next_arr_soc is None:
-                        # Cannot reach next stop from this departure level
-                        continue
+                # Enumerate all discrete departure levels s_dep_lvl >= arr_lvl
+                # s_dep_lvl == arr_lvl is zero-cost pass-through (no charging)
+                for s_dep_lvl in range(arr_lvl, K + 1):
+                    if s_dep_lvl == arr_lvl:
+                        search_charge_levels(
+                            stop_idx + 1,
+                            s_dep_lvl,
+                            accum_chg_time,
+                            accum_discomfort,
+                            current_stops,
+                            indices=indices,
+                            segments=segments,
+                            drive_time=drive_time,
+                        )
+                    else:
+                        s_out = level_to_soc(s_dep_lvl, K)
+                        t_chg = charge_time_min(s_in, s_out, station.max_kw, car)
+                        d_chg = compute_dwell_discomfort(
+                            dwell_min=t_chg,
+                            amenity_score=station.amenity_score,
+                            is_real_charge=True,
+                            arrival_soc=s_in,
+                            stop_threshold_soc=trip.stop_threshold_soc,
+                            gamma=trip.gamma,
+                        )
 
-                    # Charge duration and discomfort
-                    t_chg = charge_time_min(curr_s_in, s_dep, station.max_kw, car)
-                    d_chg = compute_dwell_discomfort(
-                        dwell_min=t_chg,
-                        amenity_score=station.amenity_score,
-                        is_real_charge=True,
-                        arrival_soc=curr_s_in,
-                        stop_threshold_soc=trip.stop_threshold_soc,
-                        gamma=trip.gamma,
-                    )
+                        stop_record = {
+                            "station_id": station.id,
+                            "arrival_soc": s_in,
+                            "departure_soc": s_out,
+                            "charge_time_min": t_chg,
+                        }
 
-                    stop_record = {
-                        "station_id": station.id,
-                        "arrival_soc": curr_s_in,
-                        "departure_soc": s_dep,
-                        "charge_time_min": t_chg,
-                    }
+                        search_charge_levels(
+                            stop_idx + 1,
+                            s_dep_lvl,
+                            accum_chg_time + t_chg,
+                            accum_discomfort + d_chg,
+                            current_stops + [stop_record],
+                            indices=indices,
+                            segments=segments,
+                            drive_time=drive_time,
+                        )
 
-                    search_charge_levels(
-                        stop_idx + 1,
-                        next_arr_soc,
-                        accum_chg_time + t_chg,
-                        accum_discomfort + d_chg,
-                        current_stops + [stop_record],
-                        indices=indices,
-                        segments=segments,
-                        drive_time=drive_time,
-                    )
-
-            # First drive from source to first chosen stop
-            first_arr_soc = simulate_path_soc(
-                car, road_segments[0], start_s / K, reserve_soc
-            )
-            if first_arr_soc is not None:
-                search_charge_levels(0, first_arr_soc, 0.0, 0.0, [])
+            search_charge_levels(0, start_s_lvl, 0.0, 0.0, [])
 
     return best_result
