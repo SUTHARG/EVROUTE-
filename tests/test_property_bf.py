@@ -100,8 +100,59 @@ class TestBruteForceProperty:
                 f"Planner J ({plan.cost_J}) != Brute Force J ({bf_res['cost_J']})"
             )
 
-    def test_zzz_assert_charging_distribution(self):
-        """Assert minimum fraction of forced charging examples (>=60% >=1 stop, and >=1 with 2 stops)."""
+    def test_assert_charging_distribution(self):
+        """Assert minimum fraction of forced charging examples (>=60% >=1 stop, and >=1 with 2 stops).
+
+        Order-independent: If executed standalone, evaluates a deterministic suite of forced-charging scenarios.
+        """
+        if TestBruteForceProperty.total_feasible == 0:
+            test_configs = [
+                (0.30, 1.0, 18.0, 3, 10, 110.0),
+                (0.25, 0.5, 18.0, 3, 10, 115.0),
+                (0.35, 1.5, 20.0, 4, 10, 135.0),
+                (0.28, 1.0, 17.5, 4, 10, 135.0),
+                (0.25, 2.0, 18.0, 4, 10, 140.0),
+                (0.30, 0.8, 19.0, 4, 10, 130.0),
+                (0.32, 1.2, 21.0, 4, 10, 135.0),
+                (0.26, 1.0, 17.0, 4, 10, 140.0),
+            ]
+            for s_soc, lam, bat, n_st, k_res, dist in test_configs:
+                c = Car(
+                    id="dist_car",
+                    name="Distribution Test Car",
+                    battery_kwh=bat,
+                    usable_fraction=0.95,
+                    consumption_kwh_per_km=0.150,
+                    mass_kg=1200.0,
+                    drag_coefficient=0.30,
+                    frontal_area_m2=2.10,
+                    max_dc_kw=50.0,
+                    regen_efficiency=0.75,
+                )
+                snap = generate_synthetic_corridor(
+                    total_distance_km=dist,
+                    num_road_segments=20,
+                    num_stations=n_st,
+                    seed=42 + n_st,
+                    car=c,
+                )
+                tr = Trip(
+                    snapshot_id=snap.id,
+                    start_soc=s_soc,
+                    reserve_soc=0.10,
+                    stop_threshold_soc=0.80,
+                    comfort_weight_lambda=lam,
+                    K=k_res,
+                )
+                bf = solve_brute_force(snap, c, tr, lambda_val=lam)
+                if bf["feasible"]:
+                    TestBruteForceProperty.total_feasible += 1
+                    TestBruteForceProperty.total_evaluated += 1
+                    if len(bf["stops"]) >= 1:
+                        TestBruteForceProperty.stops_ge_1 += 1
+                    if len(bf["stops"]) >= 2:
+                        TestBruteForceProperty.stops_ge_2 += 1
+
         tot = TestBruteForceProperty.total_feasible
         assert tot > 0, "At least some examples must be feasible"
 

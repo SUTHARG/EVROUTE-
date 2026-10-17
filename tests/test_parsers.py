@@ -28,7 +28,7 @@ def test_osrm_response_parser(tmp_path):
 
 def test_overpass_station_parser_and_fallback_policy(tmp_path):
     """Verify Overpass station parser handles power and connector fallback policies offline."""
-    fixture_path = FIXTURES_DIR / "sample_overpass_stations.json"
+    fixture_path = FIXTURES_DIR / "pune_city_overpass_stations.json"
     assert fixture_path.exists(), "Overpass fixture must exist"
 
     with open(fixture_path, "r", encoding="utf-8") as f:

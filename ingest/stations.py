@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import random
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -63,22 +64,56 @@ class StationIngestionPolicy:
         self.raise_on_network_error = raise_on_network_error
 
 
+def load_curated_stations(csv_path: str | Path | None = None) -> list[Station]:
+    """Load verified real-world EV charging stations from a curated CSV dataset.
+
+    Used when live Open Charge Map API key is not configured and Overpass public mirrors
+    are experiencing outages or rate-limiting. Marked with source='manual'.
+    """
+    if csv_path is None:
+        csv_path = Path("data/stations/curated_mumbai_pune_chargers.csv")
+    path = Path(csv_path)
+    if not path.exists():
+        return []
+
+    import csv
+
+    stations: list[Station] = []
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            connectors = [c.strip() for c in row.get("connector_types", "CCS2").split(";")]
+            st = Station(
+                id=row["id"],
+                name=row["name"],
+                lat=float(row["lat"]),
+                lon=float(row["lon"]),
+                operator=row["operator"],
+                max_kw=float(row["max_kw"]),
+                connector_types=connectors,
+                reliability=simulate_station_reliability(row["operator"], row["id"]),
+                is_reliability_simulated=True,
+                amenities={"restaurant": 2, "cafe": 1, "toilets": 2, "fuel": 1},
+                amenity_score=float(row.get("amenity_score", 0.8)),
+                source="manual",
+            )
+            stations.append(st)
+    return stations
+
+
 def fetch_overpass_stations(
     bbox: tuple[float, float, float, float],  # (min_lat, min_lon, max_lat, max_lon)
     policy: StationIngestionPolicy | None = None,
     allow_network: bool = True,
     cache: DiskCache | None = None,
+    route_coords: list[tuple[float, float]] | None = None,
+    curated_csv: str | Path | None = None,
 ) -> tuple[list[Station], dict[str, Any]]:
-    """Fetch charging stations within bounding box from Overpass API and optional OpenChargeMap.
+    """Fetch charging stations within bounding box from Overpass API, OpenChargeMap, or curated CSV.
 
-    Queries Overpass with proper User-Agent headers, chunking large boxes to avoid 406/429
-    rejection, and raises descriptive errors on network/timeout failures when configured.
-
-    Complexity:
-        O(N) where N is the number of stations returned.
-
-    Returns:
-        Tuple of (list of Station objects, audit_log_dict).
+    Queries Open Charge Map as primary live source (sampled along route points every ~15km, radius ~10km)
+    when OCM_API_KEY is configured, then supplements with Overpass API. If both network sources return 0,
+    loads verified corridor stations from curated CSV with source='manual'.
     """
     policy = policy or StationIngestionPolicy()
     disk_cache = cache or DiskCache("overpass")
@@ -92,7 +127,7 @@ def fetch_overpass_stations(
         "dropped_power": 0,
         "assumed_power": 0,
         "assumed_connector": 0,
-        "count_by_source": {"osm": 0, "ocm": 0},
+        "count_by_source": {"osm": 0, "ocm": 0, "manual": 0},
     }
 
     elements: list[dict[str, Any]] = []
@@ -101,7 +136,7 @@ def fetch_overpass_stations(
     if cached is not None:
         elements = cached
     elif allow_network:
-        # Divide into 2x2 sub-bounding boxes if bounding area is large
+        # Divide into sub-bounding boxes if bounding area is large
         d_lat = max_lat - min_lat
         d_lon = max_lon - min_lon
         sub_boxes = []
@@ -147,7 +182,6 @@ def fetch_overpass_stations(
                     raise RuntimeError(
                         f"Overpass API query failed for bbox {s_bbox}: {exc}"
                     ) from exc
-                # Otherwise keep collected elements
 
         disk_cache.set(cache_key, elements)
     else:
@@ -169,61 +203,79 @@ def fetch_overpass_stations(
     stations: list[Station] = []
 
     if ocm_api_key and allow_network:
-        ocm_cache_key = f"ocm_{min_lat:.3f}_{min_lon:.3f}_{max_lat:.3f}_{max_lon:.3f}"
-        ocm_cached = disk_cache.get(ocm_cache_key)
-        ocm_data: list[dict[str, Any]] = []
-        if ocm_cached:
-            ocm_data = ocm_cached
+        # Sample points along the route every ~15 km (or use center of bbox)
+        sample_points = []
+        if route_coords and len(route_coords) > 10:
+            step = max(1, len(route_coords) // 10)
+            sample_points = [route_coords[i] for i in range(0, len(route_coords), step)]
         else:
-            try:
-                headers = {"User-Agent": USER_AGENT}
-                ocm_resp = requests.get(
-                    OPENCHARGEMAP_API_URL,
-                    params={
-                        "output": "json",
-                        "countrycode": "IN",
-                        "boundingbox": f"({min_lat},{min_lon}),({max_lat},{max_lon})",
-                        "maxresults": 100,
-                        "key": ocm_api_key,
-                    },
-                    headers=headers,
-                    timeout=20,
+            sample_points = [((min_lat + max_lat) / 2.0, (min_lon + max_lon) / 2.0)]
+
+        ocm_headers = {"User-Agent": USER_AGENT}
+        seen_ocm_ids = set()
+
+        for s_lat, s_lon in sample_points:
+            ocm_cache_key = f"ocm_{s_lat:.3f}_{s_lon:.3f}_rad10"
+            ocm_cached = disk_cache.get(ocm_cache_key)
+            ocm_data: list[dict[str, Any]] = []
+            if ocm_cached:
+                ocm_data = ocm_cached
+            else:
+                try:
+                    ocm_resp = requests.get(
+                        OPENCHARGEMAP_API_URL,
+                        params={
+                            "output": "json",
+                            "countrycode": "IN",
+                            "latitude": s_lat,
+                            "longitude": s_lon,
+                            "distance": 10,
+                            "distanceunit": "KM",
+                            "maxresults": 50,
+                            "key": ocm_api_key,
+                        },
+                        headers=ocm_headers,
+                        timeout=15,
+                    )
+                    if ocm_resp.status_code == 200:
+                        ocm_data = ocm_resp.json()
+                        disk_cache.set(ocm_cache_key, ocm_data)
+                except (requests.RequestException, ValueError) as exc:
+                    if policy.raise_on_network_error:
+                        raise RuntimeError("OpenChargeMap query failed") from exc
+                    ocm_data = []
+
+            for ocm_item in ocm_data:
+                poi_id = str(ocm_item.get("ID", f"ocm_{len(stations)}"))
+                if poi_id in seen_ocm_ids:
+                    continue
+                seen_ocm_ids.add(poi_id)
+
+                addr = ocm_item.get("AddressInfo", {})
+                lat_f = addr.get("Latitude")
+                lon_f = addr.get("Longitude")
+                if lat_f is None or lon_f is None:
+                    continue
+
+                op_info = ocm_item.get("OperatorInfo") or {}
+                op_title = op_info.get("Title") or "OpenChargeMap Network"
+                station = Station(
+                    id=f"ocm_{poi_id}",
+                    name=addr.get("Title", f"OCM Charger {poi_id}"),
+                    lat=float(lat_f),
+                    lon=float(lon_f),
+                    operator=op_title,
+                    max_kw=60.0,
+                    connector_types=["CCS2"],
+                    reliability=simulate_station_reliability(op_title, f"ocm_{poi_id}"),
+                    is_reliability_simulated=True,
+                    amenities={},
+                    amenity_score=0.0,
+                    source="ocm",
                 )
-                if ocm_resp.status_code == 200:
-                    ocm_data = ocm_resp.json()
-                    disk_cache.set(ocm_cache_key, ocm_data)
-            except (requests.RequestException, ValueError) as exc:
-                if policy.raise_on_network_error:
-                    raise RuntimeError("OpenChargeMap query failed") from exc
-                ocm_data = []
-
-        for ocm_item in ocm_data:
-            poi_id = str(ocm_item.get("ID", f"ocm_{len(stations)}"))
-            addr = ocm_item.get("AddressInfo", {})
-            lat_f = addr.get("Latitude")
-            lon_f = addr.get("Longitude")
-            if lat_f is None or lon_f is None:
-                continue
-
-            op_info = ocm_item.get("OperatorInfo") or {}
-            op_title = op_info.get("Title") or "OpenChargeMap Network"
-            station = Station(
-                id=f"ocm_{poi_id}",
-                name=addr.get("Title", f"OCM Charger {poi_id}"),
-                lat=float(lat_f),
-                lon=float(lon_f),
-                operator=op_title,
-                max_kw=60.0,
-                connector_types=["CCS2"],
-                reliability=simulate_station_reliability(op_title, f"ocm_{poi_id}"),
-                is_reliability_simulated=True,
-                amenities={},
-                amenity_score=0.0,
-                source="ocm",
-            )
-            stations.append(station)
-            audit["kept"] += 1
-            audit["count_by_source"]["ocm"] += 1
+                stations.append(station)
+                audit["kept"] += 1
+                audit["count_by_source"]["ocm"] += 1
 
     # 2. Secondary Live Source / Fixture: Overpass API
     from ingest.route import haversine_distance_m
@@ -320,4 +372,34 @@ def fetch_overpass_stations(
         audit["kept"] += 1
         audit["count_by_source"]["osm"] += 1
 
+    # 3. Curated verified dataset fallback when live API queries return 0 results
+    if len(stations) == 0:
+        curated = load_curated_stations(curated_csv)
+        for st in curated:
+            stations.append(st)
+            audit["kept"] += 1
+            audit["count_by_source"]["manual"] += 1
+
     return stations, audit
+
+
+def compute_station_route_distances(
+    stations: list[Station], route_coords: list[tuple[float, float]]
+) -> dict[str, float]:
+    """Compute distance statistics (min, mean, max in km) from stations to nearest route points."""
+    from ingest.route import haversine_distance_m
+
+    if not stations or not route_coords:
+        return {"min_km": 0.0, "mean_km": 0.0, "max_km": 0.0}
+
+    distances_km = []
+    for st in stations:
+        min_d_m = min(haversine_distance_m(st.lat, st.lon, r_lat, r_lon) for r_lat, r_lon in route_coords)
+        distances_km.append(min_d_m / 1000.0)
+
+    return {
+        "min_km": round(min(distances_km), 2),
+        "mean_km": round(sum(distances_km) / len(distances_km), 2),
+        "max_km": round(max(distances_km), 2),
+    }
+

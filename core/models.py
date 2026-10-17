@@ -418,6 +418,8 @@ class Plan(BaseModel):
     charging_time_min: float = 0.0
     total_discomfort_min: float = 0.0
     cost_J: float = 0.0
+    build_time_ms: float = 0.0
+    search_time_ms: float = 0.0
     stops: list[ChargingStop] = Field(default_factory=list)
     arrival_soc_dest: float = 0.0
     route_soc_profile: list[RoutePoint] = Field(default_factory=list)

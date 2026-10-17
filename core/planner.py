@@ -8,6 +8,7 @@ Pareto trade-off frontiers via lambda sweeps.
 from __future__ import annotations
 
 import heapq
+import time
 from typing import Any
 
 from core.charger_graph import ReducedChargerGraph, build_reduced_charger_graph
@@ -95,8 +96,10 @@ class EVPlanner:
             kept_stations = list(snapshot.stations)
 
         # Step 2: Build or reuse reduced 2-layer charger transition graph
+        t_build_start = time.perf_counter()
         if precomputed_reduced_graph is not None:
             reduced_graph = precomputed_reduced_graph
+            build_time_ms = 0.0
         else:
             road_graph = RoadGraph.from_snapshot(snapshot)
             reduced_graph, _ = build_reduced_charger_graph(
@@ -108,8 +111,10 @@ class EVPlanner:
                 K=K,
                 reserve_soc=trip.reserve_soc,
             )
+            build_time_ms = (time.perf_counter() - t_build_start) * 1000.0
 
         # Step 3: Dijkstra search over explicit state space (node_layer, s)
+        t_search_start = time.perf_counter()
         # States are strings: "u_layer:s" where u_layer in {"source_dep", "dest_arr", f"{st_id}_arr", f"{st_id}_dep"}
         # and s in {0, ..., K}
         start_s = discretize_soc_level(trip.start_soc, K)
@@ -233,11 +238,14 @@ class EVPlanner:
                     f"vehicle range with reserve {trip.reserve_soc:.0%} is insufficient to bridge charging gaps."
                 )
 
+            search_time_ms = (time.perf_counter() - t_search_start) * 1000.0
             return Plan(
                 trip=trip,
                 car=car,
                 feasible=False,
                 infeasibility_reason=reason,
+                build_time_ms=round(build_time_ms, 2),
+                search_time_ms=round(search_time_ms, 2),
             )
 
         # Step 5: Backtrack optimal itinerary
@@ -349,6 +357,7 @@ class EVPlanner:
                 )
 
         dest_arrival_soc = profile[-1].soc if profile else level_to_soc(best_dest_state[1], K)
+        search_time_ms = (time.perf_counter() - t_search_start) * 1000.0
 
         return Plan(
             trip=trip,
@@ -359,6 +368,8 @@ class EVPlanner:
             charging_time_min=charging_time_total,
             total_discomfort_min=final_disc_min,
             cost_J=min_dest_J,
+            build_time_ms=round(build_time_ms, 2),
+            search_time_ms=round(search_time_ms, 2),
             stops=stops,
             arrival_soc_dest=dest_arrival_soc,
             route_soc_profile=profile,

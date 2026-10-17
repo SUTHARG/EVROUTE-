@@ -148,19 +148,20 @@ def build_reduced_charger_graph(
             v_node = terminal_node_map[v_id]
             total_pairs_evaluated += 1
 
+            # Extract candidate paths
             candidate_paths: list[tuple[str, list[int]]] = []
+            if u_node == v_node:
+                candidate_paths.append(("fastest", [u_node]))
+            else:
+                if time_dists.get(v_node, float("inf")) < float("inf"):
+                    fastest_v_path = reconstruct_path(time_preds, target=v_node)
+                    if fastest_v_path:
+                        candidate_paths.append(("fastest", fastest_v_path))
 
-            # Extract fastest path vertices
-            if time_dists.get(v_node, float("inf")) < float("inf"):
-                fastest_v_path = reconstruct_path(time_preds, target=v_node)
-                if fastest_v_path:
-                    candidate_paths.append(("fastest", fastest_v_path))
-
-            # Extract eco path vertices
-            if energy_dists.get(v_node, float("inf")) < float("inf"):
-                eco_v_path = reconstruct_path(energy_preds, target=v_node)
-                if eco_v_path and eco_v_path != candidate_paths[0][1] if candidate_paths else True:
-                    candidate_paths.append(("eco", eco_v_path))
+                if energy_dists.get(v_node, float("inf")) < float("inf"):
+                    eco_v_path = reconstruct_path(energy_preds, target=v_node)
+                    if eco_v_path and (not candidate_paths or eco_v_path != candidate_paths[0][1]):
+                        candidate_paths.append(("eco", eco_v_path))
 
             for path_type, v_path in candidate_paths:
                 # Resolve sequence of RoadEdges
@@ -199,9 +200,10 @@ def build_reduced_charger_graph(
                         if node_u:
                             coords.append((node_u.lat, node_u.lon))
 
-                last_node = road_graph.nodes.get(v_path[-1])
-                if last_node:
-                    coords.append((last_node.lat, last_node.lon))
+                if v_path:
+                    last_node = road_graph.nodes.get(v_path[-1])
+                    if last_node:
+                        coords.append((last_node.lat, last_node.lon))
 
                 # 3. Inbound spur into v (if v is a station)
                 if v_id in reduced_graph.stations:

@@ -6,9 +6,9 @@ This document provides a rigorous asymptotic complexity analysis of each algorit
 
 ## 1. Physical Road Graph Algorithms
 
-Let $G_{road} = (V, E)$ denote the physical road network graph, where:
-- $|V|$ is the number of road nodes (e.g., GPS coordinates along the corridor, $|V| \approx 2{,}500$ for Mumbai–Pune).
-- $|E|$ is the number of directed road segments. In highway corridors, $|E| = O(|V|)$.
+Let $G_{\text{road}} = (V, E)$ denote the physical road network graph, where:
+- $|V|$ is the number of road nodes (e.g., GPS coordinates along the corridor, $|V| \approx 2{,}500$ for the densified Mumbai–Pune corridor).
+- $|E|$ is the number of directed road segments. In highway corridors, $|E| = \mathcal{O}(|V|)$.
 
 ### 1.1 Bellman-Ford Algorithm with Early Termination
 - **Objective**: Finds the minimum-energy ("eco") path between road nodes in the presence of negative energy edge weights (induced by regenerative braking on steep descents) and detects negative energy cycles.
@@ -59,7 +59,7 @@ Let $V_c = \text{KeptStations} \cup \{\text{source}, \text{dest}\}$.
   - For each pair $(u, v)$ where $v$ is downstream from $u$, two candidate road paths are evaluated:
     1. **Fastest path**: Dijkstra on physical travel time $t_s$.
     2. **Eco path**: Bellman-Ford on mechanical energy $e_{\text{kwh}}$ (with regen).
-  - The path with lower arrival energy deficit is selected, and its step-by-step physical road edge sequence is simulated across all $K+1$ discrete departure levels ($0 \dots K$) with 100% capacity clamping to produce the pre-tabulated `arrival_soc_table`.
+  - Both candidate paths are simulated across all $K+1$ discrete departure levels ($0 \dots K$) with 100% capacity clamping to produce the pre-tabulated `arrival_soc_table`.
 - **Complexity**:
   - Number of reduced pairs: $|E_c| \le \frac{|V_c|(|V_c|-1)}{2} = \mathcal{O}(|V_c|^2)$.
   - Step-by-step simulation per pair: $\mathcal{O}(K \cdot L_{\text{path}})$ where $L_{\text{path}}$ is the number of road edges between $u$ and $v$ ($L_{\text{path}} \le |V|$).
@@ -100,30 +100,35 @@ $$|S| = (2 \cdot |V_c|) \cdot (K + 1) = \mathcal{O}(|V_c| \cdot K)$$
 
 ### 4.3 Total Search Complexity
 Using a binary min-heap (Dijkstra's algorithm):
-$$\text{Total Edges in State Graph: } |E_{state}| = \mathcal{O}(|E_c| \cdot K + |V_c| \cdot K^2)$$
-$$\text{Total States: } |V_{state}| = \mathcal{O}(|V_c| \cdot K)$$
-$$\text{Time Complexity: } \mathcal{O}\left( |E_{state}| \log |V_{state}| \right) = \mathcal{O}\left( (|E_c| \cdot K + |V_c| \cdot K^2) \log(|V_c| \cdot K) \right)$$
+$$\text{Total Edges in State Graph: } |E_{\text{state}}| = \mathcal{O}(|E_c| \cdot K + |V_c| \cdot K^2)$$
+$$\text{Total States: } |V_{\text{state}}| = \mathcal{O}(|V_c| \cdot K)$$
+$$\text{Time Complexity: } \mathcal{O}\left( |E_{\text{state}}| \log |V_{\text{state}}| \right) = \mathcal{O}\left( (|E_c| \cdot K + |V_c| \cdot K^2) \log(|V_c| \cdot K) \right)$$
 $$\text{Space Complexity: } \mathcal{O}(|V_c| \cdot K + |E_c| \cdot K)$$
 
-### 4.4 Graph Contraction Speedup Factor
+### 4.4 Graph Contraction and Empirical Baseline
 If dynamic programming were executed directly on the physical road graph without contraction:
-- Physical states: $|V_{\text{road}}| \cdot K \approx 2{,}500 \cdot 100 = 250{,}000$ states.
-- Contracted states: $|V_c| \cdot K \approx 6 \cdot 100 = 600$ states.
-- Theoretical speedup factor:
-  $$\text{Speedup} = \frac{|V_{\text{road}}|}{|V_c|} \approx \frac{2{,}500}{6} \approx 416\times$$
-In practice, Dijkstra over the contracted 2-layer graph completes in **~2 to 5 milliseconds**, enabling instantaneous real-time query responses.
+- **Uncontracted State Space**: $|V_{\text{road}}| \cdot K$ states (e.g. $2{,}495 \times 100 \approx 250{,}000$ states), relaxing $|E_{\text{road}}| \cdot K$ driving transitions edge-by-edge.
+- **Contracted State Space**: $2 |V_c| \cdot K$ states (e.g. $2 \times 6 \times 100 \approx 1{,}200$ states), bypassing all intermediate road node relaxations.
+- **Empirical Measured Baseline**:
+  As benchmarked in `analysis/benchmarks.py` (Benchmark 5), executing Dijkstra directly on the uncontracted road graph requires expanding states across all 2,495 intermediate physical nodes, whereas the contracted 2-layer charger graph isolates transitions to charging decisions alone. On corridor topologies, graph contraction achieves an empirical search speedup of **1.3× to 5.0×** while decoupling graph precomputation from real-time queries. In practice, Dijkstra over the contracted 2-layer graph completes in **~1 to 5 milliseconds**, enabling instantaneous real-time query responses.
 
 ---
 
 ## 5. Multi-Objective Pareto Frontier vs. Scalar DP
 
-A complete multi-objective trip planner seeks all non-dominated trade-off vectors across 4 physical criteria:
+A complete multi-objective trip planner seeks all non-dominated trade-off vectors across conflicting criteria:
 $$\vec{F} = (T_{\text{drive}}, T_{\text{charge}}, D_{\text{discomfort}}, \text{SoC}_{\text{arrival}})$$
 
-### 5.1 Exponential Complexity of Full 4-D Pareto Frontier
-In general multi-objective shortest path problems with 2 or more non-additive or conflicting objectives, the number of non-dominated Pareto paths can grow **exponentially** with the graph diameter:
+### 5.1 Exponential Complexity of Full Multi-Objective Pareto Frontier
+In general multi-objective shortest path problems with 2 or more conflicting objectives, the size of the non-dominated Pareto set can grow **exponentially** with the graph size in the worst case:
 $$|\mathcal{P}_{\text{exact}}| = \mathcal{O}(2^{|V_c|})$$
-Tracking non-dominated vectors at every intermediate node requires maintaining non-dominated sets that double with each sequential charging decision, making exact 4-D Pareto search computationally intractable for corridors with many stations.
+
+This fundamental theoretical limitation is established in the classical literature:
+- **Hansen, P. (1980)**: *"Bicriterion Path Problems."* In: Fandel, G., Gal, T. (eds) *Multiple Criteria Decision Making Theory and Application*, Lecture Notes in Economics and Mathematical Systems, vol 177, pp. 109–127. Springer, Berlin, Heidelberg. (Proves that the number of Pareto-optimal paths in a graph with non-negative edge weights can grow as $2^{\Omega(|V|)}$ in the worst case).
+- **Warburton, A. (1987)**: *"Approximation of Pareto optima in multiple-objective, shortest-path problems."* *Operations Research*, 35(1), pp. 70–79. (Proves NP-hardness of multi-objective path problems and analyzes the combinatorial explosion of non-dominated frontiers).
+- **Müller-Hannemann, M., & Weihe, K. (2001)**: *"Pareto shortest paths is often feasible in practice."* *ACM Journal of Experimental Algorithmics (JEA)*, 6, 11-es. (Analyzes worst-case exponential state explosion versus contracted practical performance).
+
+Tracking non-dominated vectors at every intermediate node requires maintaining non-dominated sets that double with each sequential charging decision, making exact multi-dimensional Pareto enumeration computationally intractable for large networks.
 
 ### 5.2 Polynomial Scalar Sweep Strategy
 Route.ev resolves this fundamental trade-off by solving the scalarized objective:

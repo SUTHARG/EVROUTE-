@@ -34929,19 +34929,165 @@
       "energy_kwh": 0.0018
     }
   ],
-  "stations": [],
+  "stations": [
+    {
+      "id": "manual_mpe_01",
+      "name": "Tata Power - Khalapur Food Plaza (KM 36)",
+      "lat": 18.7954,
+      "lon": 73.2912,
+      "operator": "Tata Power",
+      "max_kw": 60.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.928,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 2,
+        "cafe": 1,
+        "toilets": 2,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false,
+      "source": "manual",
+      "road_node_id": null,
+      "detour_distance_m": 0.0,
+      "detour_time_s": 0.0,
+      "detour_energy_kwh": 0.0
+    },
+    {
+      "id": "manual_mpe_02",
+      "name": "Zeon Charging - Lonavala Express Hub (KM 55)",
+      "lat": 18.7525,
+      "lon": 73.4089,
+      "operator": "Zeon",
+      "max_kw": 50.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.949,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 2,
+        "cafe": 1,
+        "toilets": 2,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false,
+      "source": "manual",
+      "road_node_id": null,
+      "detour_distance_m": 0.0,
+      "detour_time_s": 0.0,
+      "detour_energy_kwh": 0.0
+    },
+    {
+      "id": "manual_mpe_03",
+      "name": "Jio-bp pulse - Urse Toll Plaza (KM 85)",
+      "lat": 18.7188,
+      "lon": 73.6125,
+      "operator": "Jio-bp",
+      "max_kw": 120.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.827,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 2,
+        "cafe": 1,
+        "toilets": 2,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false,
+      "source": "manual",
+      "road_node_id": null,
+      "detour_distance_m": 0.0,
+      "detour_time_s": 0.0,
+      "detour_energy_kwh": 0.0
+    },
+    {
+      "id": "manual_mpe_04",
+      "name": "Statiq - Talegaon Expressway Fuel Stop (KM 98)",
+      "lat": 18.723,
+      "lon": 73.6845,
+      "operator": "Statiq",
+      "max_kw": 60.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.838,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 2,
+        "cafe": 1,
+        "toilets": 2,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false,
+      "source": "manual",
+      "road_node_id": null,
+      "detour_distance_m": 0.0,
+      "detour_time_s": 0.0,
+      "detour_energy_kwh": 0.0
+    },
+    {
+      "id": "manual_mpe_05",
+      "name": "ChargeZone - Somatane Toll Hub (KM 105)",
+      "lat": 18.7051,
+      "lon": 73.712,
+      "operator": "ChargeZone",
+      "max_kw": 60.0,
+      "connector_types": [
+        "CCS2"
+      ],
+      "reliability": 0.893,
+      "is_reliability_simulated": true,
+      "amenities": {
+        "restaurant": 2,
+        "cafe": 1,
+        "toilets": 2,
+        "fuel": 1
+      },
+      "amenity_score": 1.0,
+      "power_assumed": false,
+      "connector_assumed": false,
+      "source": "manual",
+      "road_node_id": null,
+      "detour_distance_m": 0.0,
+      "detour_time_s": 0.0,
+      "detour_energy_kwh": 0.0
+    }
+  ],
   "metadata": {
     "synthetic": false,
     "ascent_before_smoothing_m": 1853.0,
     "ascent_after_smoothing_m": 1468.98,
     "total_distance_km": 150.9035,
     "num_road_segments": 2494,
-    "num_stations": 0,
+    "num_stations": 5,
     "total_raw": 0,
     "kept": 0,
     "dropped_connector": 0,
     "dropped_power": 0,
     "assumed_power": 0,
-    "assumed_connector": 0
+    "assumed_connector": 0,
+    "count_by_source": {
+      "osm": 0,
+      "ocm": 0,
+      "manual": 5
+    },
+    "distance_to_route_stats": {
+      "min_km": 0.31,
+      "mean_km": 1.73,
+      "max_km": 3.22
+    }
   }
 }
