@@ -8,7 +8,7 @@ def compute_dwell_discomfort(
     amenity_score: float,
     is_real_charge: bool = True,
     arrival_soc: float = 0.0,
-    stop_threshold_soc: float = 0.80,
+    stop_threshold_soc: float = 0.35,
     gamma: float = 80.0,
     fixed_stop_penalty_min: float = 5.0,
     window_under_slope: float = 1.0,
@@ -66,4 +66,4 @@ def compute_dwell_discomfort(
     else:
         premature_penalty = 0.0
 
-    return round(base_discomfort + window_penalty + fixed_stop_penalty_min + premature_penalty, 3)
+    return base_discomfort + window_penalty + fixed_stop_penalty_min + premature_penalty

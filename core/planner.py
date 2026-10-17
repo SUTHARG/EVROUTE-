@@ -161,15 +161,9 @@ class EVPlanner:
 
                 dep_layer = f"{st_id}_dep"
 
-                # 1. Zero-cost pass-through (no charging): (st_arr, s) -> (st_dep, s)
-                pass_state = (dep_layer, s)
-                if curr_J < dist_J.get(pass_state, float("inf")) - 1e-9:
-                    dist_J[pass_state] = curr_J
-                    state_metrics[pass_state] = state_metrics[(u_layer, s)]
-                    pred[pass_state] = ((u_layer, s), ("pass", None))
-                    heapq.heappush(pq, (curr_J, dep_layer, s))
-
-                # 2. Real charge transitions: (st_arr, s) -> (st_dep, s_dep) for s_dep > s
+                # Real charge transitions: (st_arr, s) -> (st_dep, s_dep) for s_dep > s
+                # Uncharged visits are disallowed because entering a station incurs a physical spur detour.
+                # If a station is not used for charging, the vehicle stays on the highway via direct reduced edges.
                 if use_all_departure_levels:
                     candidate_departure_levels = list(range(s + 1, K + 1))
                 else:
@@ -354,17 +348,17 @@ class EVPlanner:
                     )
                 )
 
-        dest_arrival_soc = round(profile[-1].soc, 4) if profile else round(level_to_soc(best_dest_state[1], K), 4)
+        dest_arrival_soc = profile[-1].soc if profile else level_to_soc(best_dest_state[1], K)
 
         return Plan(
             trip=trip,
             car=car,
             feasible=True,
-            total_time_min=round(final_time_min, 2),
-            driving_time_min=round(driving_time_total, 2),
-            charging_time_min=round(charging_time_total, 2),
-            total_discomfort_min=round(final_disc_min, 6),
-            cost_J=round(min_dest_J, 6),
+            total_time_min=final_time_min,
+            driving_time_min=driving_time_total,
+            charging_time_min=charging_time_total,
+            total_discomfort_min=final_disc_min,
+            cost_J=min_dest_J,
             stops=stops,
             arrival_soc_dest=dest_arrival_soc,
             route_soc_profile=profile,

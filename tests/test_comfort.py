@@ -40,8 +40,9 @@ def test_soft_premature_stop_penalty_only_on_real_charge():
         gamma=gamma,
     )
     premature_component = gamma * (0.85 - stop_threshold)
-    assert premature_component > 0.0
-    assert d_charge > premature_component
+    expected_exact_sum = 25.0 * (1.0 - 0.50) + 0.0 + 5.0 + premature_component
+    assert d_charge == expected_exact_sum
+    assert d_charge == 29.5
 
     # Case B: Pass-through (is_real_charge=False) -> penalty must be strictly 0.0
     d_pass = compute_dwell_discomfort(

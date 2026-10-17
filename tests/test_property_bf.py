@@ -3,7 +3,6 @@
 import os
 import time
 
-import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -203,8 +202,8 @@ def test_non_uniform_station_layout_and_nonzero_detours():
     assert abs(plan.cost_J - bf_res["cost_J"]) < 1e-5
 
 
-def test_route_soc_profile_final_soc_matches_plan_arrival():
-    """Verify that route_soc_profile's final SoC equals plan.arrival_soc_dest."""
+def test_route_soc_profile_independent_clamped_simulation():
+    """Verify route_soc_profile is an independent clamped simulation within 1/K and above reserve."""
     car = PRESET_CARS["tata_nexon_ev_lr"]
     snapshot = generate_synthetic_corridor(
         total_distance_km=120.0,
@@ -218,7 +217,7 @@ def test_route_soc_profile_final_soc_matches_plan_arrival():
         snapshot_id=snapshot.id,
         start_soc=0.50,
         reserve_soc=0.10,
-        stop_threshold_soc=0.80,
+        stop_threshold_soc=0.35,
         K=20,
     )
 
@@ -227,11 +226,29 @@ def test_route_soc_profile_final_soc_matches_plan_arrival():
 
     assert plan.feasible is True
     assert len(plan.route_soc_profile) > 0
-    final_point_soc = plan.route_soc_profile[-1].soc
 
-    assert final_point_soc == pytest.approx(plan.arrival_soc_dest, abs=1e-4), (
-        f"Profile final SoC ({final_point_soc}) != plan.arrival_soc_dest ({plan.arrival_soc_dest})"
+    # 1. Confirm continuous physical simulation: SoC points are NOT snapped to discrete grid levels (1/K)
+    non_grid_count = sum(
+        1 for pt in plan.route_soc_profile
+        if abs(pt.soc * trip.K - round(pt.soc * trip.K)) > 1e-3
     )
+    assert non_grid_count > 0, "Profile should contain continuous intermediate SoC values from physical simulation"
+
+    # 2. Assert final profile SoC is within 1/K of plan.arrival_soc_dest
+    final_point_soc = plan.route_soc_profile[-1].soc
+    allowed_tolerance = (1.0 / trip.K) + 1e-6
+    assert abs(final_point_soc - plan.arrival_soc_dest) <= allowed_tolerance, (
+        f"Profile final SoC ({final_point_soc}) not within 1/K ({allowed_tolerance}) of arrival ({plan.arrival_soc_dest})"
+    )
+
+    # 3. Assert profile SoC never drops below reserve across the entire trajectory
+    for idx, pt in enumerate(plan.route_soc_profile):
+        assert pt.soc >= trip.reserve_soc - 1e-6, (
+            f"Profile point {idx} at dist={pt.distance_km}km dropped below reserve: {pt.soc} < {trip.reserve_soc}"
+        )
+        assert pt.soc <= 1.0 + 1e-6, (
+            f"Profile point {idx} at dist={pt.distance_km}km exceeded 100% capacity: {pt.soc} > 1.0"
+        )
 
 
 def test_pareto_frontier_monotonicity():
@@ -384,3 +401,67 @@ def test_filtering_preserves_feasibility_property():
 
     if plan_all.feasible:
         assert plan_kept.feasible is True, "Greedy filtering broke feasibility!"
+
+
+def test_regression_original_mismatch_instance():
+    """Regression test reproducing the original mismatch instance: start_soc=0.375, lambda=2.5, battery=21.75.
+
+    Root Cause Analysis:
+        In commit 444f1a2, brute_force.py had 3 discrepancies relative to the planner:
+        1. It used continuous floating-point arrival SoC rather than discretizing to level/K,
+           causing charge_time_min and dwell penalty to diverge.
+        2. It ignored spur detours (detour_distance_m, detour_time_s, detour_energy_kwh),
+           evaluating travel time only on the main highway.
+        3. It assumed uniform integer node milestones instead of reading real road_node_id.
+
+        When brute force is properly aligned to the true physical problem (including spur detours
+        and unified grid discretization), both independently achieve the exact global optimum J.
+    """
+    car = Car(
+        id="test_prop_car",
+        name="Property Test Car",
+        battery_kwh=21.75,
+        usable_fraction=0.95,
+        consumption_kwh_per_km=0.150,
+        mass_kg=1200.0,
+        drag_coefficient=0.30,
+        frontal_area_m2=2.10,
+        max_dc_kw=50.0,
+        regen_efficiency=0.75,
+    )
+    snapshot = generate_synthetic_corridor(
+        total_distance_km=135.0,
+        num_road_segments=20,
+        num_stations=4,
+        seed=46,
+        car=car,
+    )
+    trip = Trip(
+        snapshot_id=snapshot.id,
+        start_soc=0.375,
+        reserve_soc=0.10,
+        stop_threshold_soc=0.35,
+        comfort_weight_lambda=2.5,
+        K=10,
+    )
+
+    # 1. Independent Brute Force
+    bf_res = solve_brute_force(snapshot, car, trip, lambda_val=2.5)
+
+    # 2. Main Planner
+    planner = EVPlanner()
+    plan = planner.plan(snapshot, car, trip, lambda_val=2.5, enable_filter=False)
+
+    assert plan.feasible is True
+    assert bf_res["feasible"] is True
+
+    # Assert exact cost matching within numerical tolerance
+    assert abs(plan.cost_J - bf_res["cost_J"]) < 1e-5, (
+        f"Regression failure: Planner J ({plan.cost_J}) != BF J ({bf_res['cost_J']})"
+    )
+
+    # Both must select the exact same charging stops
+    planner_stops = [(s.station_id, s.arrival_soc, s.departure_soc) for s in plan.stops]
+    bf_stops = [(s["station_id"], s["arrival_soc"], s["departure_soc"]) for s in bf_res["stops"]]
+    assert planner_stops == bf_stops, f"Stop sequence mismatch: {planner_stops} vs {bf_stops}"
+

@@ -187,8 +187,8 @@ def solve_brute_force(
                         best_J = cost_J
                         best_result = {
                             "feasible": True,
-                            "cost_J": round(cost_J, 6),
-                            "total_time_min": round(total_drive_time_min, 6),
+                            "cost_J": cost_J,
+                            "total_time_min": total_drive_time_min,
                             "total_discomfort_min": 0.0,
                             "stops": [],
                         }
@@ -225,9 +225,9 @@ def solve_brute_force(
                         best_J = cost_J
                         best_result = {
                             "feasible": True,
-                            "cost_J": round(cost_J, 6),
-                            "total_time_min": round(total_time, 6),
-                            "total_discomfort_min": round(accum_discomfort, 6),
+                            "cost_J": cost_J,
+                            "total_time_min": total_time,
+                            "total_discomfort_min": accum_discomfort,
                             "stops": list(current_stops),
                         }
                     return
@@ -237,49 +237,36 @@ def solve_brute_force(
                 station = stations[st_real_idx]
                 s_in = level_to_soc(arr_lvl, K)
 
-                # Enumerate all discrete departure levels s_dep_lvl >= arr_lvl
-                # s_dep_lvl == arr_lvl is zero-cost pass-through (no charging)
-                for s_dep_lvl in range(arr_lvl, K + 1):
-                    if s_dep_lvl == arr_lvl:
-                        search_charge_levels(
-                            stop_idx + 1,
-                            s_dep_lvl,
-                            accum_chg_time,
-                            accum_discomfort,
-                            current_stops,
-                            indices=indices,
-                            segments=segments,
-                            drive_time=drive_time,
-                        )
-                    else:
-                        s_out = level_to_soc(s_dep_lvl, K)
-                        t_chg = charge_time_min(s_in, s_out, station.max_kw, car)
-                        d_chg = compute_dwell_discomfort(
-                            dwell_min=t_chg,
-                            amenity_score=station.amenity_score,
-                            is_real_charge=True,
-                            arrival_soc=s_in,
-                            stop_threshold_soc=trip.stop_threshold_soc,
-                            gamma=trip.gamma,
-                        )
+                # Enumerate all discrete departure levels s_dep_lvl > arr_lvl (real charging stops only)
+                for s_dep_lvl in range(arr_lvl + 1, K + 1):
+                    s_out = level_to_soc(s_dep_lvl, K)
+                    t_chg = charge_time_min(s_in, s_out, station.max_kw, car)
+                    d_chg = compute_dwell_discomfort(
+                        dwell_min=t_chg,
+                        amenity_score=station.amenity_score,
+                        is_real_charge=True,
+                        arrival_soc=s_in,
+                        stop_threshold_soc=trip.stop_threshold_soc,
+                        gamma=trip.gamma,
+                    )
 
-                        stop_record = {
-                            "station_id": station.id,
-                            "arrival_soc": s_in,
-                            "departure_soc": s_out,
-                            "charge_time_min": t_chg,
-                        }
+                    stop_record = {
+                        "station_id": station.id,
+                        "arrival_soc": s_in,
+                        "departure_soc": s_out,
+                        "charge_time_min": t_chg,
+                    }
 
-                        search_charge_levels(
-                            stop_idx + 1,
-                            s_dep_lvl,
-                            accum_chg_time + t_chg,
-                            accum_discomfort + d_chg,
-                            current_stops + [stop_record],
-                            indices=indices,
-                            segments=segments,
-                            drive_time=drive_time,
-                        )
+                    search_charge_levels(
+                        stop_idx + 1,
+                        s_dep_lvl,
+                        accum_chg_time + t_chg,
+                        accum_discomfort + d_chg,
+                        current_stops + [stop_record],
+                        indices=indices,
+                        segments=segments,
+                        drive_time=drive_time,
+                    )
 
             search_charge_levels(0, start_s_lvl, 0.0, 0.0, [])
 

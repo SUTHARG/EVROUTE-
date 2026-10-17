@@ -132,8 +132,10 @@ def build_corridor_snapshot(
     for st in stations:
         populate_station_amenities(st, allow_network=allow_network)
 
+    is_synthetic = any(getattr(st, "source", "") == "synthetic" for st in stations)
+
     metadata = {
-        "synthetic": False,
+        "synthetic": is_synthetic,
         "ascent_before_smoothing_m": ascent_before,
         "ascent_after_smoothing_m": ascent_after,
         "total_distance_km": route_data["distance_m"] / 1000.0,

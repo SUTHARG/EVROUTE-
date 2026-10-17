@@ -1,0 +1,159 @@
+{
+  "runtime_vs_vc": [
+    {
+      "V_c": 2,
+      "runtime_ms": 2.01
+    },
+    {
+      "V_c": 4,
+      "runtime_ms": 4.93
+    },
+    {
+      "V_c": 6,
+      "runtime_ms": 8.17
+    },
+    {
+      "V_c": 8,
+      "runtime_ms": 11.37
+    },
+    {
+      "V_c": 10,
+      "runtime_ms": 17.06
+    },
+    {
+      "V_c": 12,
+      "runtime_ms": 22.09
+    },
+    {
+      "V_c": 16,
+      "runtime_ms": 34.51
+    },
+    {
+      "V_c": 20,
+      "runtime_ms": 45.13
+    }
+  ],
+  "runtime_vs_k": [
+    {
+      "K": 10,
+      "runtime_ms": 1.22
+    },
+    {
+      "K": 20,
+      "runtime_ms": 2.01
+    },
+    {
+      "K": 30,
+      "runtime_ms": 3.19
+    },
+    {
+      "K": 50,
+      "runtime_ms": 5.91
+    },
+    {
+      "K": 75,
+      "runtime_ms": 11.57
+    },
+    {
+      "K": 100,
+      "runtime_ms": 17.57
+    },
+    {
+      "K": 150,
+      "runtime_ms": 38.33
+    },
+    {
+      "K": 200,
+      "runtime_ms": 62.05
+    }
+  ],
+  "bf_vs_dp": [
+    {
+      "V_c": 1,
+      "dp_ms": 0.28,
+      "bf_ms": 0.15,
+      "speedup": 0.5,
+      "cost_matched": true
+    },
+    {
+      "V_c": 2,
+      "dp_ms": 0.47,
+      "bf_ms": 0.31,
+      "speedup": 0.7,
+      "cost_matched": true
+    },
+    {
+      "V_c": 3,
+      "dp_ms": 0.7,
+      "bf_ms": 1.08,
+      "speedup": 1.5,
+      "cost_matched": true
+    },
+    {
+      "V_c": 4,
+      "dp_ms": 0.93,
+      "bf_ms": 4.71,
+      "speedup": 5.1,
+      "cost_matched": true
+    },
+    {
+      "V_c": 5,
+      "dp_ms": 1.2,
+      "bf_ms": 14.46,
+      "speedup": 12.0,
+      "cost_matched": true
+    }
+  ],
+  "k_convergence": [
+    {
+      "K": 10,
+      "cost_J": 141.4763,
+      "abs_error_vs_K300": 4.0014
+    },
+    {
+      "K": 15,
+      "cost_J": 138.3983,
+      "abs_error_vs_K300": 0.9234
+    },
+    {
+      "K": 20,
+      "cost_J": 139.1678,
+      "abs_error_vs_K300": 1.6929
+    },
+    {
+      "K": 30,
+      "cost_J": 138.3983,
+      "abs_error_vs_K300": 0.9234
+    },
+    {
+      "K": 50,
+      "cost_J": 137.7827,
+      "abs_error_vs_K300": 0.3078
+    },
+    {
+      "K": 75,
+      "cost_J": 137.7827,
+      "abs_error_vs_K300": 0.3078
+    },
+    {
+      "K": 100,
+      "cost_J": 137.7827,
+      "abs_error_vs_K300": 0.3078
+    },
+    {
+      "K": 150,
+      "cost_J": 137.4749,
+      "abs_error_vs_K300": 0.0
+    },
+    {
+      "K": 200,
+      "cost_J": 137.5519,
+      "abs_error_vs_K300": 0.0769
+    },
+    {
+      "K": 300,
+      "cost_J": 137.4749,
+      "abs_error_vs_K300": 0.0
+    }
+  ]
+}

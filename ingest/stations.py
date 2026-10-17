@@ -154,7 +154,79 @@ def fetch_overpass_stations(
         elements = []
 
     audit["total_raw"] = len(elements)
+
+    # 1. Primary Live Source: Open Charge Map (when OCM_API_KEY is configured)
+    ocm_api_key = os.getenv("OCM_API_KEY")
+    if not ocm_api_key and os.path.exists(".env"):
+        try:
+            with open(".env", "r", encoding="utf-8") as env_f:
+                for line in env_f:
+                    if line.startswith("OCM_API_KEY="):
+                        ocm_api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            pass
+
     stations: list[Station] = []
+
+    if ocm_api_key and allow_network:
+        ocm_cache_key = f"ocm_{min_lat:.3f}_{min_lon:.3f}_{max_lat:.3f}_{max_lon:.3f}"
+        ocm_cached = disk_cache.get(ocm_cache_key)
+        ocm_data: list[dict[str, Any]] = []
+        if ocm_cached:
+            ocm_data = ocm_cached
+        else:
+            try:
+                headers = {"User-Agent": USER_AGENT}
+                ocm_resp = requests.get(
+                    OPENCHARGEMAP_API_URL,
+                    params={
+                        "output": "json",
+                        "countrycode": "IN",
+                        "boundingbox": f"({min_lat},{min_lon}),({max_lat},{max_lon})",
+                        "maxresults": 100,
+                        "key": ocm_api_key,
+                    },
+                    headers=headers,
+                    timeout=20,
+                )
+                if ocm_resp.status_code == 200:
+                    ocm_data = ocm_resp.json()
+                    disk_cache.set(ocm_cache_key, ocm_data)
+            except (requests.RequestException, ValueError) as exc:
+                if policy.raise_on_network_error:
+                    raise RuntimeError("OpenChargeMap query failed") from exc
+                ocm_data = []
+
+        for ocm_item in ocm_data:
+            poi_id = str(ocm_item.get("ID", f"ocm_{len(stations)}"))
+            addr = ocm_item.get("AddressInfo", {})
+            lat_f = addr.get("Latitude")
+            lon_f = addr.get("Longitude")
+            if lat_f is None or lon_f is None:
+                continue
+
+            op_info = ocm_item.get("OperatorInfo") or {}
+            op_title = op_info.get("Title") or "OpenChargeMap Network"
+            station = Station(
+                id=f"ocm_{poi_id}",
+                name=addr.get("Title", f"OCM Charger {poi_id}"),
+                lat=float(lat_f),
+                lon=float(lon_f),
+                operator=op_title,
+                max_kw=60.0,
+                connector_types=["CCS2"],
+                reliability=simulate_station_reliability(op_title, f"ocm_{poi_id}"),
+                is_reliability_simulated=True,
+                amenities={},
+                amenity_score=0.0,
+                source="ocm",
+            )
+            stations.append(station)
+            audit["kept"] += 1
+            audit["count_by_source"]["ocm"] += 1
+
+    # 2. Secondary Live Source / Fixture: Overpass API
+    from ingest.route import haversine_distance_m
 
     for elem in elements:
         tags = elem.get("tags", {})
@@ -166,6 +238,18 @@ def fetch_overpass_stations(
         lat = elem.get("lat") or elem.get("center", {}).get("lat")
         lon = elem.get("lon") or elem.get("center", {}).get("lon")
         if lat is None or lon is None:
+            continue
+
+        lat_f = float(lat)
+        lon_f = float(lon)
+
+        # Proximity deduplication: if station already exists from primary OCM within 100m, skip OSM duplicate
+        is_duplicate = False
+        for existing in stations:
+            if haversine_distance_m(lat_f, lon_f, existing.lat, existing.lon) < 100.0:
+                is_duplicate = True
+                break
+        if is_duplicate:
             continue
 
         # Power parsing
@@ -219,8 +303,8 @@ def fetch_overpass_stations(
         station = Station(
             id=f"osm_{elem_id}",
             name=name,
-            lat=float(lat),
-            lon=float(lon),
+            lat=lat_f,
+            lon=lon_f,
             operator=operator,
             max_kw=max_kw,
             connector_types=connectors,
@@ -235,73 +319,5 @@ def fetch_overpass_stations(
         stations.append(station)
         audit["kept"] += 1
         audit["count_by_source"]["osm"] += 1
-
-    # Optional Open Charge Map supplement reading OCM_API_KEY from environment or .env
-    ocm_api_key = os.getenv("OCM_API_KEY")
-    if not ocm_api_key and os.path.exists(".env"):
-        try:
-            with open(".env", "r", encoding="utf-8") as env_f:
-                for line in env_f:
-                    if line.startswith("OCM_API_KEY="):
-                        ocm_api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
-        except OSError:
-            pass
-
-    if ocm_api_key and allow_network:
-        ocm_cache_key = f"ocm_{min_lat:.3f}_{min_lon:.3f}_{max_lat:.3f}_{max_lon:.3f}"
-        ocm_cached = disk_cache.get(ocm_cache_key)
-        ocm_data: list[dict[str, Any]] = []
-        if ocm_cached:
-            ocm_data = ocm_cached
-        else:
-            try:
-                headers = {"User-Agent": USER_AGENT}
-                ocm_resp = requests.get(
-                    OPENCHARGEMAP_API_URL,
-                    params={
-                        "output": "json",
-                        "countrycode": "IN",
-                        "boundingbox": f"({min_lat},{min_lon}),({max_lat},{max_lon})",
-                        "maxresults": 100,
-                        "key": ocm_api_key,
-                    },
-                    headers=headers,
-                    timeout=20,
-                )
-                if ocm_resp.status_code == 200:
-                    ocm_data = ocm_resp.json()
-                    disk_cache.set(ocm_cache_key, ocm_data)
-            except (requests.RequestException, ValueError) as exc:
-                if policy.raise_on_network_error:
-                    raise RuntimeError(f"OpenChargeMap query failed: {exc}") from exc
-                ocm_data = []
-
-        for ocm_item in ocm_data:
-            poi_id = str(ocm_item.get("ID", f"ocm_{len(stations)}"))
-            addr = ocm_item.get("AddressInfo", {})
-            lat_f = addr.get("Latitude")
-            lon_f = addr.get("Longitude")
-            if lat_f is None or lon_f is None:
-                continue
-
-            op_info = ocm_item.get("OperatorInfo") or {}
-            op_title = op_info.get("Title") or "OpenChargeMap Network"
-            station = Station(
-                id=f"ocm_{poi_id}",
-                name=addr.get("Title", f"OCM Charger {poi_id}"),
-                lat=float(lat_f),
-                lon=float(lon_f),
-                operator=op_title,
-                max_kw=60.0,
-                connector_types=["CCS2"],
-                reliability=simulate_station_reliability(op_title, f"ocm_{poi_id}"),
-                is_reliability_simulated=True,
-                amenities={},
-                amenity_score=0.0,
-                source="ocm",
-            )
-            stations.append(station)
-            audit["kept"] += 1
-            audit["count_by_source"]["ocm"] += 1
 
     return stations, audit

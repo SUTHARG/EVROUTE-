@@ -289,12 +289,12 @@ class Trip(BaseModel):
         0.10, ge=0.0, le=0.5, description="Safety reserve battery SoC in [0, 1]"
     )
     stop_threshold_soc: float = Field(
-        0.80, ge=0.0, le=1.0, description="Max preferred arrival SoC to trigger a charge stop"
+        0.35, ge=0.0, le=1.0, description="Max preferred arrival SoC to trigger a charge stop (~0.35)"
     )
     gamma: float = Field(
         80.0,
         ge=0.0,
-        description="Soft premature stop penalty factor in discomfort-minutes per unit SoC",
+        description="Soft premature stop penalty factor in discomfort-minutes per unit SoC above stop_threshold_soc (gamma=80.0 corresponds to an 8-minute discomfort penalty for stopping prematurely at 45% SoC instead of 35%)",
     )
     comfort_weight_lambda: float = Field(
         1.0, ge=0.0, description="Weight lambda in objective J = time_min + lambda * discomfort_min"
