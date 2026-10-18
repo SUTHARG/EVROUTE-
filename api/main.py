@@ -23,6 +23,7 @@ from api.schemas import (
     PlanRequest,
     PlanResponse,
     SnapshotSummary,
+    StationSummary,
 )
 from core.models import PRESET_CARS, Car, CorridorSnapshot, Trip
 from core.planner import EVPlanner
@@ -233,10 +234,28 @@ def plan_trip(req: PlanRequest) -> PlanResponse:
         cost_J=plan.cost_J,
         build_time_ms=plan.build_time_ms,
         search_time_ms=plan.search_time_ms,
+        states_expanded=plan.states_expanded,
+        edges_relaxed=plan.edges_relaxed,
         stops=plan.stops,
         arrival_soc_dest=plan.arrival_soc_dest,
         route_soc_profile=plan.route_soc_profile,
         pareto_frontier=plan.pareto_frontier,
+        corridor_stations=[
+            StationSummary(
+                id=st.id,
+                name=st.name,
+                lat=st.lat,
+                lon=st.lon,
+                operator=st.operator,
+                max_kw=st.max_kw,
+                amenity_score=st.amenity_score,
+                amenities=st.amenities,
+                reliability=st.reliability,
+                is_reliability_simulated=st.is_reliability_simulated,
+                source=getattr(st, "source", "synthetic"),
+            )
+            for st in snapshot.stations
+        ],
         synthetic=is_synth,
         data_provenance=provenance,
         is_reliability_simulated=True,

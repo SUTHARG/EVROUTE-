@@ -33,7 +33,7 @@ class EVPlanner:
     """Exact scalar DP EV trip planner over explicit 2-layer state graph."""
 
     def __init__(self) -> None:
-        pass
+        self.last_reduced_graph: ReducedChargerGraph | None = None
 
     def plan(
         self,
@@ -115,6 +115,7 @@ class EVPlanner:
                 reserve_soc=trip.reserve_soc,
             )
             build_time_ms = (time.perf_counter() - t_build_start) * 1000.0
+        self.last_reduced_graph = reduced_graph
 
         # Step 3: Dijkstra search over explicit state space (node_layer, s)
         t_search_start = time.perf_counter()

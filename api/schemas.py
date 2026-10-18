@@ -49,6 +49,22 @@ class PlanRequest(BaseModel):
     enable_filter: bool = Field(True, description="Enable greedy range-preserving candidate charger filter")
 
 
+class StationSummary(BaseModel):
+    """Charging station summary for map rendering and provenance auditing."""
+
+    id: str
+    name: str
+    lat: float
+    lon: float
+    operator: str
+    max_kw: float
+    amenity_score: float = 0.0
+    amenities: dict[str, int] = Field(default_factory=dict)
+    reliability: float = 0.85
+    is_reliability_simulated: bool = True
+    source: str = "synthetic"
+
+
 class PlanResponse(BaseModel):
     """Planned EV trip response with metadata flags for frontend badges."""
 
@@ -61,10 +77,13 @@ class PlanResponse(BaseModel):
     cost_J: float = 0.0
     build_time_ms: float = 0.0
     search_time_ms: float = 0.0
+    states_expanded: int = 0
+    edges_relaxed: int = 0
     stops: list[ChargingStop] = Field(default_factory=list)
     arrival_soc_dest: float = 0.0
     route_soc_profile: list[RoutePoint] = Field(default_factory=list)
     pareto_frontier: list[ParetoPoint] = Field(default_factory=list)
+    corridor_stations: list[StationSummary] = Field(default_factory=list)
 
     # Metadata flags for UI badges
     synthetic: bool = Field(..., description="Flag for UI: whether corridor is synthetic")

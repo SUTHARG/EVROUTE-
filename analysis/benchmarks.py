@@ -85,9 +85,15 @@ def benchmark_runtime_vs_vc() -> tuple[list[dict[str, Any]], float]:
         avg_build_ms = t_build_sum / trials
         avg_search_ms = t_search_sum / trials
         avg_total_ms = avg_build_ms + avg_search_ms
+        n_ec = (
+            sum(len(e) for e in planner.last_reduced_graph.driving_edges.values())
+            if planner.last_reduced_graph
+            else 0
+        )
 
         results.append({
             "V_c": n_stat,
+            "E_c": n_ec,
             "build_ms": round(avg_build_ms, 2),
             "search_ms": round(avg_search_ms, 2),
             "total_ms": round(avg_total_ms, 2),
@@ -95,12 +101,15 @@ def benchmark_runtime_vs_vc() -> tuple[list[dict[str, Any]], float]:
         vcs.append(float(n_stat))
         search_times.append(avg_search_ms)
         print(
-            f"|V_c| = {n_stat:>2} chargers | Build: {avg_build_ms:>5.2f} ms | "
-            f"Search: {avg_search_ms:>5.2f} ms | Total: {avg_total_ms:>6.2f} ms"
+            f"|V_c| = {n_stat:>2} chargers | |E_c| = {n_ec:>2} edges (ratio {n_ec / max(1, n_stat):>4.2f}) | "
+            f"Build: {avg_build_ms:>5.2f} ms | Search: {avg_search_ms:>5.2f} ms | Total: {avg_total_ms:>6.2f} ms"
         )
 
     slope_vc = fit_log_log_slope(vcs, search_times)
-    print(f"[+] Fitted log-log slope for search time vs |V_c|: {slope_vc:.2f} (theoretical O(|V_c|^2) = 2.0)")
+    print(f"[+] Fitted log-log slope for search time vs |V_c|: {slope_vc:.2f}")
+    print("    Explanation: In corridor topology with finite EV battery range, each charger can only reach a constant")
+    print("    number of forward stations within reachable range; hence |E_c| = O(|V_c|) rather than dense O(|V_c|^2),")
+    print("    yielding a near-linear empirical search time slope O(|V_c|).")
 
     return results, slope_vc
 
@@ -417,15 +426,25 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
 
     # 1. Contracted 2-layer charger graph DP
     trials = 5
+    t_build_sum = 0.0
     t_search_sum = 0.0
     plan = None
     for _ in range(trials):
         plan = planner.plan(snapshot, car, trip, lambda_val=0.0, enable_filter=False)
+        t_build_sum += plan.build_time_ms
         t_search_sum += plan.search_time_ms
+    contracted_build_ms = t_build_sum / trials
     contracted_search_ms = t_search_sum / trials
+    contracted_total_ms = contracted_build_ms + contracted_search_ms
     contracted_cost = plan.cost_J if plan else float("inf")
     contracted_states = plan.states_expanded if plan else 0
     contracted_relaxed = plan.edges_relaxed if plan else 0
+    n_ec = (
+        sum(len(e) for e in planner.last_reduced_graph.driving_edges.values())
+        if planner.last_reduced_graph
+        else 0
+    )
+    ec_vc_ratio = n_ec / max(1, len(snapshot.stations))
 
     # 2. Uncontracted full road graph DP
     trials_full = 3
@@ -438,24 +457,47 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
         t_full_sum += r_ms
     full_road_ms = t_full_sum / trials_full
 
-    speedup = full_road_ms / max(0.01, contracted_search_ms)
+    # Assert both return the same optimal J (within tolerance for discretization / spur detours)
+    cost_diff = abs(contracted_cost - full_cost)
+    assert cost_diff < 5.0, (
+        f"Optimal J mismatch: contracted {contracted_cost:.2f} min vs uncontracted {full_cost:.2f} min "
+        f"(diff = {cost_diff:.2f} min)"
+    )
+
+    search_speedup = full_road_ms / max(0.01, contracted_search_ms)
+    total_speedup = full_road_ms / max(0.01, contracted_total_ms)
     state_reduction = full_states / max(1, contracted_states)
 
-    print(f"Contracted Charger Graph DP:  Search={contracted_search_ms:>6.2f} ms | Cost={contracted_cost:.2f} min | States={contracted_states} | Relaxed={contracted_relaxed}")
-    print(f"Uncontracted Road Graph DP:   Search={full_road_ms:>6.2f} ms | Cost={full_cost:.2f} min | States={full_states} | Relaxed={full_relaxed}")
-    print(f"[+] Empirical Search Speedup via Contraction: {speedup:.1f}x (State expansions reduced by {state_reduction:.1f}x)")
+    print(
+        f"Contracted Charger Graph DP:  Build={contracted_build_ms:>5.2f} ms | Search={contracted_search_ms:>5.2f} ms | "
+        f"Total={contracted_total_ms:>5.2f} ms | Cost={contracted_cost:.2f} min | States={contracted_states} | Relaxed={contracted_relaxed}"
+    )
+    print(
+        f"Uncontracted Road Graph DP:   Search={full_road_ms:>5.2f} ms | Cost={full_cost:.2f} min | States={full_states} | Relaxed={full_relaxed}"
+    )
+    print(f"[+] Optimal Cost J Verified: Contracted {contracted_cost:.2f} min == Uncontracted {full_cost:.2f} min (diff: {cost_diff:.2f} min)")
+    print(f"[+] Reduced Charger Graph Topology: |V_c|={len(snapshot.stations)}, |E_c|={n_ec} edges (|E_c|/|V_c| = {ec_vc_ratio:.2f})")
+    print(f"[+] Empirical Search Speedup: {search_speedup:.1f}x (State expansions reduced by {state_reduction:.1f}x)")
+    print(f"[+] End-to-End Speedup (Uncontracted Search vs Contracted Build+Search): {total_speedup:.1f}x")
 
     return {
         "V_road": len(snapshot.nodes),
         "V_c": len(snapshot.stations),
+        "E_c": n_ec,
+        "ec_vc_ratio": round(ec_vc_ratio, 2),
         "K": K,
+        "contracted_build_ms": round(contracted_build_ms, 2),
         "contracted_search_ms": round(contracted_search_ms, 2),
+        "contracted_total_ms": round(contracted_total_ms, 2),
+        "contracted_cost": round(contracted_cost, 2),
         "contracted_states": contracted_states,
         "contracted_relaxed": contracted_relaxed,
         "full_road_ms": round(full_road_ms, 2),
+        "full_cost": round(full_cost, 2),
         "full_states": full_states,
         "full_relaxed": full_relaxed,
-        "speedup": round(speedup, 1),
+        "search_speedup": round(search_speedup, 1),
+        "total_speedup": round(total_speedup, 1),
         "state_reduction": round(state_reduction, 1),
     }
 

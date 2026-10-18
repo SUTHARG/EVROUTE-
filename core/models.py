@@ -129,6 +129,23 @@ PRESET_CARS: dict[str, Car] = {
         is_placeholder_profile=True,
         description="Approximate placeholder profile for Hyundai Ioniq 5, user-editable.",
     ),
+    "tata_tiago_ev": Car(
+        id="tata_tiago_ev",
+        name="Tata Tiago EV (Placeholder)",
+        battery_kwh=24.0,
+        usable_fraction=0.95,
+        consumption_kwh_per_km=0.120,  # 120 Wh/km
+        mass_kg=1150.0,
+        drag_coefficient=0.33,
+        frontal_area_m2=2.10,
+        max_dc_kw=25.0,
+        regen_efficiency=0.70,
+        drivetrain_efficiency=0.88,
+        auxiliary_power_kw=0.0,
+        supported_connectors=["CCS2"],
+        is_placeholder_profile=True,
+        description="Approximate placeholder profile for Tata Tiago EV, user-editable.",
+    ),
 }
 
 
