@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import benchmarkResults from "../data/benchmark_results.json";
 
 export interface PlanData {
   feasible: boolean;
@@ -192,8 +193,11 @@ export const PlanSummaryCard: React.FC<PlanSummaryCardProps> = ({ plan, comfortL
         </div>
 
         <div className="flex items-center space-x-2 font-mono text-[11px] text-slate-500">
-          <span className="text-slate-400 font-semibold" title="Static benchmark on 2,495-node Mumbai-Pune corridor (source: analysis/benchmarks.py)">
-            Static Benchmark: 6.8x search speedup (source: analysis/benchmarks.py)
+          <span
+            className="text-slate-400 font-semibold"
+            title="Empirically measured benchmark baseline from analysis/benchmark_results.json on 2,495-node corridor"
+          >
+            Static Benchmark: {(benchmarkResults as any)?.full_road_baseline?.search_speedup ?? 5.9}x search speedup ({(benchmarkResults as any)?.full_road_baseline?.amortized_15_lambda_speedup ?? 3.2}x amortized 15-λ sweep) (source: analysis/benchmark_results.json)
           </span>
         </div>
       </div>

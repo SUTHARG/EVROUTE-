@@ -3,7 +3,7 @@
 Explanatory Note on Point Counts:
 - 1,570 points (tests/fixtures/sample_osrm_route.json): The raw response geometry directly returned
   by the OSRM route query with default overview geometry.
-- 2,495 points (data/snapshots/real_mumbai_pune.json): The densified corridor road graph sampling
+- 2,495 points (data/snapshots/unverified_mumbai_pune.json): The densified corridor road graph sampling
   intermediate coordinates every ~60m across the Western Ghats (Bhor Ghat) to accurately capture
   micro-topography, hairpin curves, and localized elevation gradients for realistic regenerative braking.
 """
@@ -22,7 +22,7 @@ from ingest.route import haversine_distance_m
 
 
 def run_elevation_study():
-    snapshot_path = Path("data/snapshots/real_mumbai_pune.json")
+    snapshot_path = Path("data/snapshots/unverified_mumbai_pune.json")
     fixture_path = Path("tests/fixtures/sample_osrm_route.json")
 
     with open(snapshot_path, "r", encoding="utf-8") as f:

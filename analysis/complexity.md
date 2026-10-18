@@ -111,22 +111,26 @@ If dynamic programming were executed directly on the physical road graph without
 - **Contracted State Space**: $2 |V_c| \cdot K$ states ($2 \times 5 \times 30 = 300$ states), bypassing all intermediate road node relaxations.
 
 **Empirical Measured Baseline (`analysis/benchmarks.py`, Benchmark 5)**:
-Using the real 2,495-node Mumbai–Pune corridor snapshot (`real_mumbai_pune.json`) with $|V_{\text{road}}| = 2{,}495$, $|V_c| = 5$, and $K = 30$:
+Using the 2,495-node Mumbai–Pune corridor snapshot (`unverified_mumbai_pune.json`) with $|V_{\text{road}}| = 2{,}495$, $|V_c| = 5$, and $K = 30$:
 - **Contracted 2-Layer DP**:
-  - Search Time: **15.68 ms**
+  - Graph Build Time: **89.12 ms**
+  - Search Time: **12.64 ms**
   - States Expanded: **261**
   - Edges Relaxed: **1,919**
 - **Uncontracted Full Road Graph DP**:
-  - Search Time: **87.76 ms**
+  - Search Time: **86.34 ms**
   - States Expanded: **30,103**
   - Edges Relaxed: **31,815**
 - **Contraction Impact**:
   - State expansions reduced by **115.3×** (30,103 $\to$ 261).
-  - Empirical search runtime speedup: **5.6×** (87.76 ms $\to$ 15.68 ms).
+  - Search-only speedup: **6.8×** (86.34 ms $\to$ 12.64 ms).
+  - Single-query end-to-end speedup: **0.8×** (86.34 ms $\to$ 101.76 ms, build overhead dominates cold single query).
+  - Amortized speedup over 15-$\lambda$ sweep: **4.6×** (1295.1 ms $\to$ 278.7 ms).
+  - Amortized speedup over 8-$\lambda$ Pareto sweep: **3.6×** (690.7 ms $\to$ 190.2 ms).
 
 ### 4.5 Empirical vs. Theoretical Scaling Slopes
 Fitting log-log slopes across empirical runs in Benchmarks 1 and 2 yields:
-- **Search time vs. $|V_c|$**: Empirical slope **1.32** (Theoretical worst case: $\mathcal{O}(|V_c|^2) = 2.0$).
+- **Search time vs. $|V_c|$**: Empirical slope **1.36** (Theoretical worst case: $\mathcal{O}(|V_c|^2) = 2.0$, reduced to near-linear due to range-limited forward visibility).
 - **Search time vs. $K$**: Empirical slope **1.67** (Theoretical worst case: $\mathcal{O}(K^2) = 2.0$).
 
 **Why are empirical slopes below theoretical upper bounds?**

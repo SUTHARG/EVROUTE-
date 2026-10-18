@@ -77,6 +77,7 @@ function MapFocusController({
 function AutoFitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
+    map.invalidateSize();
     if (points.length > 1) {
       map.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
     }
@@ -314,6 +315,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
           zoom={9}
           scrollWheelZoom={true}
           className="w-full h-full dark-tiles"
+          style={{ height: "460px", width: "100%", zIndex: 0 }}
         >
           {/* OSM Tile Layer with strict attribution */}
           <TileLayer

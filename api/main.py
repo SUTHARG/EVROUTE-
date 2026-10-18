@@ -12,6 +12,7 @@ import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -299,3 +300,13 @@ def compute_pareto_frontier(req: ParetoRequest) -> ParetoResponse:
         data_provenance=provenance,
         is_reliability_simulated=True,
     )
+
+
+@app.get("/benchmarks")
+def get_benchmarks() -> dict[str, Any]:
+    """Retrieve precomputed algorithmic benchmark results and measured speedups."""
+    bench_path = Path("analysis/benchmark_results.json")
+    if bench_path.exists():
+        with open(bench_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}

@@ -165,20 +165,21 @@ def simulate_path_soc(
     e_reserve = reserve_soc * e_usable
     e_curr = departure_soc * e_usable
 
-    if e_curr < e_reserve:
+    if e_curr < e_reserve - 1e-9:
         return None
 
     for edge in edges:
         e_curr -= edge.energy_kwh
 
         # Infeasible: battery dropped below safety reserve buffer
-        if e_curr < e_reserve:
+        if e_curr < e_reserve - 1e-9:
             return None
 
         # Clamping: battery cannot charge beyond 100% of usable capacity
         e_curr = min(e_curr, e_usable)
 
-    return e_curr / e_usable
+    final_soc = max(reserve_soc, e_curr / e_usable)
+    return min(1.0, final_soc)
 
 
 def build_arrival_soc_table(
