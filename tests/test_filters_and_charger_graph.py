@@ -20,6 +20,7 @@ def test_station_scoring_and_connector_filtering():
         reliability=0.92,
         amenities={"restaurant": 2, "toilets": 1},
         amenity_score=0.70,
+        source="synthetic",
     )
     st_chademo = Station(
         id="st_2",
@@ -32,6 +33,7 @@ def test_station_scoring_and_connector_filtering():
         reliability=0.80,
         amenities={},
         amenity_score=0.10,
+        source="synthetic",
     )
 
     score_1 = compute_station_score(st_ccs2, detour_km=0.5)
@@ -75,6 +77,7 @@ def test_greedy_loop_reinstatement_bridges_gaps():
         reliability=0.95,
         amenities={"restaurant": 2, "cafe": 1, "toilets": 1},
         amenity_score=0.90,
+        source="synthetic",
     )
     st2 = Station(
         id="st_lonavala_low_score",
@@ -87,6 +90,7 @@ def test_greedy_loop_reinstatement_bridges_gaps():
         reliability=0.40,
         amenities={},
         amenity_score=0.0,  # low score will be dropped initially
+        source="synthetic",
     )
     st3 = Station(
         id="st_talegaon",
@@ -99,6 +103,7 @@ def test_greedy_loop_reinstatement_bridges_gaps():
         reliability=0.92,
         amenities={"restaurant": 1, "toilets": 1},
         amenity_score=0.70,
+        source="synthetic",
     )
 
     # Constrain car to a small range (e.g. 50 km) so gap between St1 (40km) and St3 (120km) is 80km > 50km
@@ -146,6 +151,7 @@ def test_first_gap_start_soc_sensitivity():
         reliability=0.35,
         amenities={},
         amenity_score=0.0,
+        source="synthetic",
     )
     st_mid = Station(
         id="st_mid",
@@ -158,6 +164,7 @@ def test_first_gap_start_soc_sensitivity():
         reliability=0.95,
         amenities={"restaurant": 2, "toilets": 1},
         amenity_score=0.85,
+        source="synthetic",
     )
 
     car = PRESET_CARS["tata_nexon_ev_lr"]
@@ -274,6 +281,7 @@ def test_counterexample_greedy_filter_drops_optimal_station():
         amenity_score=0.0,
         detour_time_s=0.0,
         detour_distance_m=0.0,
+        source="synthetic",
     )
     st_slow_lounge = Station(
         id="st_slow_lounge",
@@ -288,6 +296,7 @@ def test_counterexample_greedy_filter_drops_optimal_station():
         amenity_score=1.0,
         detour_time_s=0.0,
         detour_distance_m=0.0,
+        source="synthetic",
     )
 
     snapshot = CorridorSnapshot(

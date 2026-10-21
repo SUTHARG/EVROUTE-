@@ -10,6 +10,17 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from core.config import DEFAULT_RANGE_KM, USE_CAR_SPECIFIC_RANGE
+
+
+class StationAvailability(BaseModel):
+    """Real-time charger stall availability status."""
+
+    available: int = Field(0, ge=0, description="Number of currently free/available chargers")
+    total: int = Field(0, ge=0, description="Total operational charger points/stalls")
+    out_of_service: int = Field(0, ge=0, description="Number of out-of-service or damaged chargers")
+    last_updated: str | None = Field(None, description="ISO timestamp of last availability update")
+
 
 class Car(BaseModel):
     """Electric Vehicle specification profile.
@@ -20,6 +31,7 @@ class Car(BaseModel):
         battery_kwh: Total battery pack capacity in kilowatt-hours.
         usable_fraction: Fraction of battery capacity accessible for driving (e.g. 0.95).
         consumption_kwh_per_km: Rated energy consumption at reference speed (70 km/h).
+        real_range_km: Manufacturer rated real-world driving range in km.
         mass_kg: Vehicle curb mass plus driver/passenger payload in kilograms.
         drag_coefficient: Aerodynamic drag coefficient (Cd, dimensionless).
         frontal_area_m2: Vehicle frontal area in square meters (A).
@@ -39,10 +51,17 @@ class Car(BaseModel):
     consumption_kwh_per_km: float = Field(
         ..., gt=0.0, description="Rated consumption at v_ref (70 km/h) in kWh/km"
     )
+    real_range_km: float = Field(
+        250.0, gt=0.0, description="Manufacturer rated real-world driving range in km"
+    )
     mass_kg: float = Field(..., gt=0.0, description="Total vehicle mass in kg")
     drag_coefficient: float = Field(0.30, gt=0.1, le=0.6, description="Aerodynamic Cd")
     frontal_area_m2: float = Field(2.30, gt=1.0, le=5.0, description="Frontal area in m^2")
     max_dc_kw: float = Field(..., gt=0.0, description="Max DC fast charging rate in kW")
+    max_ac_kw: float = Field(7.2, gt=0.0, description="Max AC onboard charging rate in kW")
+    ac_charging_efficiency: float = Field(
+        0.90, gt=0.5, le=1.0, description="AC-to-battery charging efficiency"
+    )
     regen_efficiency: float = Field(
         0.75, gt=0.0, lt=1.0, description="Regen recovery efficiency (strictly < 1.0)"
     )
@@ -53,7 +72,8 @@ class Car(BaseModel):
         0.0, ge=0.0, description="Auxiliary electric load (HVAC, computer) in kW"
     )
     supported_connectors: list[str] = Field(
-        default_factory=lambda: ["CCS2"], description="Supported DC charging plugs"
+        default_factory=lambda: ["CCS2", "Type 2 (AC)", "Type 2"],
+        description="Supported charging plug standards (DC fast and AC)",
     )
     is_placeholder_profile: bool = Field(
         True, description="Indicates approximate placeholder profile, user-editable"
@@ -76,96 +96,112 @@ class Car(BaseModel):
         return self.usable_battery_kwh * max(0.0, 1.0 - reserve_soc)
 
 
-# Example preset vehicle profiles (clearly marked as approximate placeholder values)
+# Preset vehicle profiles. In demo mode (USE_CAR_SPECIFIC_RANGE=false), consumption is
+# calibrated so that full usable battery yields exactly DEFAULT_RANGE_KM (250 km).
 PRESET_CARS: dict[str, Car] = {
     "tata_nexon_ev_lr": Car(
         id="tata_nexon_ev_lr",
-        name="Tata Nexon EV Long Range (Placeholder)",
+        name="Tata Nexon EV Long Range",
         battery_kwh=40.5,
         usable_fraction=0.95,
-        consumption_kwh_per_km=0.140,  # 140 Wh/km
+        consumption_kwh_per_km=(40.5 * 0.95) / DEFAULT_RANGE_KM if not USE_CAR_SPECIFIC_RANGE else 0.140,
+        real_range_km=275.0,
         mass_kg=1400.0,
         drag_coefficient=0.33,
         frontal_area_m2=2.30,
         max_dc_kw=50.0,
+        max_ac_kw=7.2,
         regen_efficiency=0.75,
         drivetrain_efficiency=0.90,
         auxiliary_power_kw=0.0,
-        supported_connectors=["CCS2"],
+        supported_connectors=["CCS2", "Type 2 (AC)", "Type 2"],
         is_placeholder_profile=True,
-        description="Approximate placeholder profile for Tata Nexon EV LR, user-editable.",
+        description="Tata Nexon EV Long Range profile with 7.2 kW AC onboard charger and 50 kW DC fast charging.",
     ),
     "mg_zs_ev": Car(
         id="mg_zs_ev",
-        name="MG ZS EV (Placeholder)",
+        name="MG ZS EV",
         battery_kwh=50.3,
         usable_fraction=0.95,
-        consumption_kwh_per_km=0.155,  # 155 Wh/km
+        consumption_kwh_per_km=(50.3 * 0.95) / DEFAULT_RANGE_KM if not USE_CAR_SPECIFIC_RANGE else 0.155,
+        real_range_km=320.0,
         mass_kg=1620.0,
         drag_coefficient=0.32,
         frontal_area_m2=2.40,
         max_dc_kw=75.0,
+        max_ac_kw=7.4,
         regen_efficiency=0.75,
         drivetrain_efficiency=0.90,
         auxiliary_power_kw=0.0,
-        supported_connectors=["CCS2"],
+        supported_connectors=["CCS2", "Type 2 (AC)", "Type 2"],
         is_placeholder_profile=True,
-        description="Approximate placeholder profile for MG ZS EV, user-editable.",
+        description="MG ZS EV profile with 7.4 kW AC onboard charger and 75 kW DC fast charging.",
     ),
     "hyundai_ioniq_5": Car(
         id="hyundai_ioniq_5",
-        name="Hyundai Ioniq 5 (Placeholder)",
+        name="Hyundai Ioniq 5",
         battery_kwh=72.6,
         usable_fraction=0.95,
-        consumption_kwh_per_km=0.160,  # 160 Wh/km
+        consumption_kwh_per_km=(72.6 * 0.95) / DEFAULT_RANGE_KM if not USE_CAR_SPECIFIC_RANGE else 0.160,
+        real_range_km=430.0,
         mass_kg=1910.0,
         drag_coefficient=0.288,
         frontal_area_m2=2.50,
         max_dc_kw=220.0,
+        max_ac_kw=11.0,
         regen_efficiency=0.82,
         drivetrain_efficiency=0.92,
         auxiliary_power_kw=0.0,
-        supported_connectors=["CCS2"],
+        supported_connectors=["CCS2", "Type 2 (AC)", "Type 2"],
         is_placeholder_profile=True,
-        description="Approximate placeholder profile for Hyundai Ioniq 5, user-editable.",
+        description="Hyundai Ioniq 5 profile with 11 kW 3-phase AC onboard charger and 220 kW ultra-fast DC charging.",
     ),
     "tata_tiago_ev": Car(
         id="tata_tiago_ev",
-        name="Tata Tiago EV (Placeholder)",
+        name="Tata Tiago EV",
         battery_kwh=24.0,
         usable_fraction=0.95,
-        consumption_kwh_per_km=0.120,  # 120 Wh/km
+        consumption_kwh_per_km=(24.0 * 0.95) / DEFAULT_RANGE_KM if not USE_CAR_SPECIFIC_RANGE else 0.120,
+        real_range_km=180.0,
         mass_kg=1150.0,
         drag_coefficient=0.33,
         frontal_area_m2=2.10,
         max_dc_kw=25.0,
+        max_ac_kw=3.3,
         regen_efficiency=0.70,
         drivetrain_efficiency=0.88,
         auxiliary_power_kw=0.0,
-        supported_connectors=["CCS2"],
+        supported_connectors=["CCS2", "Type 2 (AC)", "Type 2"],
         is_placeholder_profile=True,
-        description="Approximate placeholder profile for Tata Tiago EV, user-editable.",
+        description="Tata Tiago EV profile with 3.3 kW AC onboard charger and 25 kW DC fast charging.",
     ),
 }
 
 
 class Station(BaseModel):
-    """EV Charging station with amenities and simulated reliability.
+    """EV Charging station with amenities, live availability, and simulated reliability.
 
     Attributes:
-        id: Unique identifier from OSM or synthetic generator.
+        id: Unique identifier from provider or verified database.
         name: Station name or operator location description.
         lat: Latitude in decimal degrees.
         lon: Longitude in decimal degrees.
-        operator: Charging network operator (e.g. 'Tata Power', 'Jio-bp', 'Static').
+        operator: Charging network operator (e.g. 'Tata Power', 'Jio-bp', 'Statiq').
         max_kw: Peak DC charging power in kW.
+        charger_count: Total number of charging plugs/stalls.
         connector_types: List of available connector standards (e.g. ['CCS2']).
+        availability: Real-time stall availability status if supported by provider.
         reliability: Estimated reliability/uptime in [0, 1] (EXPLICITLY SIMULATED).
         is_reliability_simulated: Always True to prevent silent data invention.
         amenities: Dictionary mapping amenity category to count within ~200m.
         amenity_score: Normalized amenity comfort score in [0.0, 1.0].
         power_assumed: Whether power was assumed due to missing data in source.
         connector_assumed: Whether connector was assumed due to missing data in source.
+        connector_unknown: Whether connector type is unknown/unspecified.
+        source: Provenance source: 'verified_manual', 'google_places', 'ocm', 'osm', etc.
+        source_url: Verification source URL or Google Maps place URI.
+        fetched_at: ISO timestamp when station data was fetched.
+        verified: True only for verified_manual or confirmed by named source with URL.
     """
 
     id: str
@@ -174,8 +210,14 @@ class Station(BaseModel):
     lon: float = Field(..., ge=-180.0, le=180.0)
     operator: str = "Unknown Operator"
     max_kw: float = Field(50.0, gt=0.0, description="Maximum DC charging power in kW")
+    max_ac_kw: float | None = Field(None, gt=0.0, description="Known station AC output in kW")
+    max_dc_kw: float | None = Field(None, gt=0.0, description="Known station DC output in kW")
+    charger_count: int = Field(1, ge=0, description="Total number of charging points/stalls")
     connector_types: list[str] = Field(
         default_factory=lambda: ["CCS2"], description="Connector standards available"
+    )
+    availability: StationAvailability | None = Field(
+        None, description="Real-time live stall availability status if supported"
     )
     reliability: float = Field(
         0.85,
@@ -203,8 +245,26 @@ class Station(BaseModel):
     connector_assumed: bool = Field(
         False, description="Whether connector_types were imputed via fallback policy"
     )
+    connector_unknown: bool = Field(
+        False, description="Whether connector types were unlisted or unknown"
+    )
+    amenity_known: bool = Field(
+        False, description="Whether amenity survey was conducted for this station"
+    )
+    spur_estimated: bool = Field(
+        False, description="Whether spur detour is a geometric estimate rather than an OSRM route"
+    )
     source: str = Field(
-        "osm", description="Provenance source of charger data: 'osm', 'ocm', or 'synthetic'"
+        ..., description="Provenance source: 'google_places', 'ocm', 'osm', 'verified_manual', etc."
+    )
+    source_url: str | None = Field(
+        None, description="Verification source URL or Google Maps place URI"
+    )
+    fetched_at: str | None = Field(
+        None, description="ISO timestamp when station data was fetched"
+    )
+    verified: bool = Field(
+        False, description="True for verified_manual or confirmed by named source with URL"
     )
     road_node_id: int | None = Field(
         None, description="Physical road network attachment node ID"
@@ -218,11 +278,17 @@ class Station(BaseModel):
     detour_energy_kwh: float = Field(
         0.0, description="Round-trip spur detour energy in kWh"
     )
-    source_url: str | None = Field(
-        None, description="Verification source URL for hand-verified chargers"
-    )
     checked_on: str | None = Field(
         None, description="Date or timestamp when charger data was verified"
+    )
+    route_distance_km: float = Field(
+        0.0, description="Projected distance along highway route in km"
+    )
+    data_provider_name: str | None = Field(
+        None, description="Name/title of upstream data provider (e.g. Open Charge Map, specific operator)"
+    )
+    data_provider_license: str | None = Field(
+        None, description="Specific license applied by upstream data provider (e.g. CC BY 4.0)"
     )
 
 
@@ -373,6 +439,23 @@ class ChargingStop(BaseModel):
     reliability: float = Field(0.85, ge=0.0, le=1.0)
     is_reliability_simulated: bool = True
     max_kw: float = 50.0
+    max_ac_kw: float | None = None
+    max_dc_kw: float | None = None
+    charging_mode: str = "dc"
+    charging_power_kw: float = 0.0
+    charger_count: int = 1
+    connector_types: list[str] = Field(default_factory=lambda: ["CCS2"])
+    availability: StationAvailability | None = None
+    source: str = "verified_manual"
+    source_url: str | None = None
+    fetched_at: str | None = None
+    verified: bool = False
+    connector_unknown: bool = False
+    route_distance_km: float = Field(0.0, ge=0.0, description="Explicit distance along main route where stop attaches in km")
+    power_assumed: bool = False
+    connector_assumed: bool = False
+    amenity_known: bool = False
+    spur_estimated: bool = False
 
 
 class RoutePoint(BaseModel):
@@ -384,6 +467,7 @@ class RoutePoint(BaseModel):
         soc: Battery SoC fraction at this point.
         lat: Latitude coordinate.
         lon: Longitude coordinate.
+        event: Segment event classification: 'drive', 'regen', 'spur_in', 'charge', 'spur_out'.
     """
 
     distance_km: float
@@ -391,6 +475,7 @@ class RoutePoint(BaseModel):
     soc: float
     lat: float
     lon: float
+    event: str = Field("drive", description="Segment event: 'drive', 'regen', 'spur_in', 'charge', 'spur_out'")
 
 
 class ParetoPoint(BaseModel):
@@ -430,6 +515,7 @@ class Plan(BaseModel):
         arrival_soc_dest: Battery SoC upon arrival at final destination.
         route_soc_profile: Continuous distance-elevation-SoC trajectory.
         pareto_frontier: Set of supported Pareto points computed via lambda-sweep.
+        elevation_available: Whether true elevation data was available for the route.
     """
 
     trip: Trip
@@ -448,7 +534,11 @@ class Plan(BaseModel):
     stops: list[ChargingStop] = Field(default_factory=list)
     arrival_soc_dest: float = 0.0
     route_soc_profile: list[RoutePoint] = Field(default_factory=list)
+    route_geometry: list[list[float]] = Field(default_factory=list, description="[[lat, lon], ...] road coordinates")
+    route_distance_km: list[float] = Field(default_factory=list, description="Cumulative distance in km for each point")
     pareto_frontier: list[ParetoPoint] = Field(default_factory=list)
+    elevation_available: bool = Field(True, description="Whether true elevation profile was available for the corridor")
+
 
 
 class CorridorSnapshot(BaseModel):

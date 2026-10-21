@@ -2,6 +2,7 @@
 
 import pytest
 
+from core.charging import charge_time_min, invert_charge_time_to_soc, station_charging_options
 from core.energy import (
     REFERENCE_SPEED_KMH,
     build_arrival_soc_table,
@@ -38,9 +39,38 @@ def test_station_simulated_tag():
         max_kw=60.0,
         connector_types=["CCS2"],
         reliability=0.92,
+        source="synthetic",
     )
     assert station.is_reliability_simulated is True
     assert station.reliability == 0.92
+
+
+def test_type2_station_uses_conservative_ac_power_and_constant_power_model():
+    """An assumed generic 50 kW rating must not turn a Type 2 plug into DC fast charging."""
+    car = PRESET_CARS["tata_nexon_ev_lr"]
+    station = Station(
+        id="type2-only",
+        name="AC charger",
+        lat=28.6,
+        lon=77.2,
+        max_kw=50.0,
+        connector_types=["Type 2 (AC)"],
+        power_assumed=True,
+        source="ocm",
+    )
+
+    options = station_charging_options(station, car)
+    assert options == [("ac", 7.2)]
+    expected_min = (car.usable_battery_kwh * 0.20 / (7.2 * car.ac_charging_efficiency)) * 60
+    assert charge_time_min(0.2, 0.4, options[0][1], car, mode="ac") == pytest.approx(expected_min)
+
+    reached_soc = invert_charge_time_to_soc(0.2, expected_min, options[0][1], car, mode="ac")
+    assert reached_soc == pytest.approx(0.4)
+
+    mixed_site = station.model_copy(
+        update={"power_assumed": False, "connector_types": ["CCS2", "Type 2 (AC)"], "max_kw": 50.0}
+    )
+    assert station_charging_options(mixed_site, car) == [("dc", 50.0), ("ac", 7.2)]
 
 
 def test_trip_validation():

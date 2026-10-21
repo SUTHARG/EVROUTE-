@@ -1,154 +1,34 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { BadgeHeader } from "@/components/BadgeHeader";
-import { TripControlPanel, TripParams, VehicleOption } from "@/components/TripControlPanel";
-import { PlanSummaryCard, PlanData } from "@/components/PlanSummaryCard";
-import { RouteSocProfileChart } from "@/components/RouteSocProfileChart";
-import { ChargingItineraryTimeline } from "@/components/ChargingItineraryTimeline";
-import { ParetoFrontierView } from "@/components/ParetoFrontierView";
+import { TopBar } from "@/components/TopBar";
+import { Sidebar, TripParams, VehicleOption, LocationWaypoint } from "@/components/Sidebar";
+import { BackendErrorModal } from "@/components/BackendErrorModal";
+import { RouteSocProfileDrawer } from "@/components/RouteSocProfileDrawer";
+import { RouteProgressModal, JobProgressInfo } from "@/components/RouteProgressModal";
+import { TripPlan, ChargingStopInfo, VehicleOptionItem } from "@/types/plan";
+import { API_BASE_URL } from "@/config/api";
 
-// Dynamically import Leaflet Map to avoid SSR window reference errors in Next.js App Router
+// Dynamically import Leaflet Map to avoid SSR window errors in Next.js
 const RouteMap = dynamic(
   () => import("@/components/RouteMap").then((mod) => mod.RouteMap),
   {
     ssr: false,
     loading: () => (
-      <div className="glass-panel h-[460px] flex flex-col items-center justify-center text-slate-400 gap-3 border border-slate-800">
-        <svg className="animate-spin w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-        </svg>
-        <span className="text-xs font-mono">Loading OpenStreetMap Canvas & Corridor Infrastructure...</span>
+      <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-3">
+        <div className="w-8 h-8 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+        <span className="text-xs font-mono">Initializing OpenStreetMap Canvas...</span>
       </div>
     ),
   }
 );
 
-// Clearly labeled static snapshot demo data (frozen reference from synthetic_mumbai_pune_like.json)
-const STATIC_SNAPSHOT_DEMO_PLAN: PlanData = {
-  feasible: true,
-  total_time_min: 138.12,
-  driving_time_min: 112.50,
-  charging_time_min: 25.62,
-  total_discomfort_min: 9.61,
-  cost_J: 147.73,
-  build_time_ms: 1.45,
-  search_time_ms: 8.92,
-  states_expanded: 261,
-  edges_relaxed: 1919,
-  arrival_soc_dest: 0.28,
-  synthetic: true,
-  data_provenance: "synthetic",
-  is_reliability_simulated: true,
-  stops: [
-    {
-      station_id: "synth_stat_07",
-      station_name: "Zeon Charging - Highway Stop 7",
-      operator: "Zeon Charging",
-      max_kw: 150.0,
-      arrival_soc: 0.16,
-      departure_soc: 0.72,
-      charge_time_min: 25.62,
-      dwell_comfort_score: 1.0,
-      detour_distance_m: 600.0,
-      detour_time_s: 70.0,
-      reliability: 0.934,
-      is_reliability_simulated: true,
-    },
-  ],
-  corridor_stations: [
-    {
-      id: "synth_stat_02",
-      name: "Tata Power - Panvel Bypass",
-      operator: "Tata Power",
-      max_kw: 60.0,
-      lat: 18.91528,
-      lon: 72.90716,
-      amenity_score: 0.6,
-      amenities: { cafe: 1, toilets: 1 },
-      reliability: 0.88,
-      is_reliability_simulated: true,
-      source: "synthetic",
-    },
-    {
-      id: "synth_stat_05",
-      name: "Jio-bp Pulse - Khalapur Tollway",
-      operator: "Jio-bp Pulse",
-      max_kw: 120.0,
-      lat: 18.7900,
-      lon: 73.1800,
-      amenity_score: 0.85,
-      amenities: { restaurant: 2, toilets: 2, fuel: 1 },
-      reliability: 0.92,
-      is_reliability_simulated: true,
-      source: "synthetic",
-    },
-    {
-      id: "synth_stat_07",
-      name: "Zeon Charging - Highway Stop 7",
-      operator: "Zeon Charging",
-      max_kw: 150.0,
-      lat: 18.7500,
-      lon: 73.4000,
-      amenity_score: 1.0,
-      amenities: { cafe: 2, restaurant: 1, toilets: 2 },
-      reliability: 0.934,
-      is_reliability_simulated: true,
-      source: "synthetic",
-    },
-    {
-      id: "synth_stat_09",
-      name: "Statiq Fast Charger - Lonavala Ghat",
-      operator: "Statiq",
-      max_kw: 60.0,
-      lat: 18.7100,
-      lon: 73.5500,
-      amenity_score: 0.7,
-      amenities: { cafe: 1, fuel: 1 },
-      reliability: 0.86,
-      is_reliability_simulated: true,
-      source: "synthetic",
-    },
-    {
-      id: "synth_stat_12",
-      name: "ChargeZone - Talegaon Plaza",
-      operator: "ChargeZone",
-      max_kw: 100.0,
-      lat: 18.6500,
-      lon: 73.6800,
-      amenity_score: 0.75,
-      amenities: { toilets: 1, restaurant: 1 },
-      reliability: 0.89,
-      is_reliability_simulated: true,
-      source: "synthetic",
-    },
-  ],
-  route_soc_profile: [
-    { distance_km: 0.0, elevation_m: 14.39, soc: 0.45, lat: 18.9388, lon: 72.8354 },
-    { distance_km: 15.2, elevation_m: 18.47, soc: 0.40, lat: 18.91528, lon: 72.90716 },
-    { distance_km: 32.5, elevation_m: 24.10, soc: 0.33, lat: 18.8850, lon: 72.9980 },
-    { distance_km: 52.0, elevation_m: 145.0, soc: 0.24, lat: 18.7900, lon: 73.1800 },
-    { distance_km: 72.4, elevation_m: 580.0, soc: 0.16, lat: 18.7500, lon: 73.4000 },
-    { distance_km: 72.5, elevation_m: 580.0, soc: 0.72, lat: 18.7501, lon: 73.4001 },
-    { distance_km: 95.0, elevation_m: 610.0, soc: 0.61, lat: 18.7100, lon: 73.5500 },
-    { distance_km: 118.0, elevation_m: 580.0, soc: 0.49, lat: 18.6500, lon: 73.6800 },
-    { distance_km: 135.0, elevation_m: 560.0, soc: 0.38, lat: 18.5800, lon: 73.7800 },
-    { distance_km: 150.0, elevation_m: 555.0, soc: 0.28, lat: 18.5204, lon: 73.8567 },
-  ],
-  pareto_frontier: [
-    { lambda_val: 0.0, total_time_min: 132.5, total_discomfort_min: 16.4, cost_J: 132.5, stops_count: 1, stop_station_ids: ["synth_stat_02"] },
-    { lambda_val: 0.5, total_time_min: 135.0, total_discomfort_min: 12.2, cost_J: 141.1, stops_count: 1, stop_station_ids: ["synth_stat_05"] },
-    { lambda_val: 1.0, total_time_min: 138.1, total_discomfort_min: 9.61, cost_J: 147.7, stops_count: 1, stop_station_ids: ["synth_stat_07"] },
-    { lambda_val: 2.5, total_time_min: 144.3, total_discomfort_min: 7.20, cost_J: 162.3, stops_count: 2, stop_station_ids: ["synth_stat_07", "synth_stat_09"] },
-  ],
-};
-
 export default function Home() {
   const [params, setParams] = useState<TripParams>({
+    snapshotId: "",
     carId: "tata_nexon_ev_lr",
-    startSoc: 0.45,
+    startSoc: 0.80,
     reserveSoc: 0.10,
     stopThresholdSoc: 0.35,
     comfortLambda: 1.0,
@@ -156,29 +36,60 @@ export default function Home() {
     enableFilter: true,
   });
 
+  const [origin, setOrigin] = useState<LocationWaypoint>({
+    lat: 0,
+    lon: 0,
+    label: "",
+  });
+  const [destination, setDestination] = useState<LocationWaypoint>({
+    lat: 0,
+    lon: 0,
+    label: "",
+  });
+  const [jobInfo, setJobInfo] = useState<JobProgressInfo | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"trip" | "plan" | "stations" | "analysis">("trip");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [mobileSheetState, setMobileSheetState] = useState<"collapsed" | "half" | "full">("half");
+
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
-  const [plan, setPlan] = useState<PlanData | null>(null);
+  const [plan, setPlan] = useState<TripPlan | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isDemoSnapshotLoaded, setIsDemoSnapshotLoaded] = useState(false);
 
   // Cross-component interaction state
   const [focusedStationId, setFocusedStationId] = useState<string | null>(null);
   const [hoveredDistanceKm, setHoveredDistanceKm] = useState<number | null>(null);
 
-  // 1. Fetch vehicle list strictly from /cars API
+  // Stable refs for tracking active requests and preventing races
+  const hasLoadedRef = React.useRef(false);
+  const isBuildingRouteRef = React.useRef(false);
+  const activePlanReqIdRef = React.useRef(0);
+  const pollCleanupRef = React.useRef<(() => void) | null>(null);
+
+  // Unmount cleanup to stop any in-flight polling
+  useEffect(() => {
+    return () => {
+      if (pollCleanupRef.current) {
+        pollCleanupRef.current();
+        pollCleanupRef.current = null;
+      }
+    };
+  }, []);
+
+  // 1. Fetch vehicles strictly from /cars
   const fetchCars = useCallback(async () => {
     try {
-      const resp = await fetch("http://127.0.0.1:8000/cars");
+      const resp = await fetch(`${API_BASE_URL}/cars`);
       if (resp.ok) {
-        const data = await resp.json();
-        // data is { car_id: CarObject, ... }
-        const carList: VehicleOption[] = Object.values(data).map((c: any) => ({
+        const data: Record<string, VehicleOptionItem> = await resp.json();
+        const carList: VehicleOption[] = Object.values(data).map((c) => ({
           id: c.id,
           name: c.name,
           battery_kwh: c.battery_kwh,
           max_dc_kw: c.max_dc_kw,
+          supported_connectors: c.supported_connectors || ["CCS2"],
           is_placeholder_profile: c.is_placeholder_profile,
           description: c.description,
         }));
@@ -186,28 +97,43 @@ export default function Home() {
         setApiOnline(true);
         setErrorMessage(null);
       } else {
-        throw new Error(`GET /cars returned HTTP ${resp.status}`);
+        setApiOnline(true); // Server is reachable!
+        let detail = "";
+        try {
+          const json = await resp.json();
+          detail = json.detail || JSON.stringify(json);
+        } catch {
+          detail = await resp.text();
+        }
+        setErrorMessage(`Server Error (HTTP ${resp.status}): ${detail || "Failed to load vehicle catalog"}`);
       }
-    } catch {
+    } catch (err: any) {
       setApiOnline(false);
       setErrorMessage(
-        "FastAPI backend is unreachable at http://127.0.0.1:8000. Start the backend with 'python -m uvicorn api.main:app' to load vehicles and plan routes."
+        `FastAPI backend is unreachable at ${API_BASE_URL}. Start the server using 'python -m uvicorn api.main:app' to load vehicles and plan routes. (${err?.message || "Connection failed"})`
       );
     }
   }, []);
 
-  // 2. Fetch plan strictly from /plan API (NO silent fallback simulation)
-  const fetchPlan = useCallback(async () => {
+  // 2. Fetch plan strictly from /plan (Preserves selected corridor, prevents races)
+  const fetchPlan = useCallback(async (targetSnapshotId?: string, fromSavedSnapshot: boolean = false) => {
+    // If route building is actively in flight and this is an un-targeted call, ignore it to prevent race
+    if (isBuildingRouteRef.current && !targetSnapshotId) {
+      return;
+    }
+
+    const currentReqId = ++activePlanReqIdRef.current;
     setIsLoading(true);
     setErrorMessage(null);
-    setIsDemoSnapshotLoaded(false);
+
+    const snapshotToUse = targetSnapshotId || params.snapshotId;
 
     try {
-      const resp = await fetch("http://127.0.0.1:8000/plan", {
+      const resp = await fetch(`${API_BASE_URL}/plan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          snapshot_id: "synthetic_mumbai_pune_v1",
+          snapshot_id: snapshotToUse,
           car_id: params.carId,
           start_soc: params.startSoc,
           reserve_soc: params.reserveSoc,
@@ -215,221 +141,414 @@ export default function Home() {
           comfort_weight_lambda: params.comfortLambda,
           K: params.K,
           enable_filter: params.enableFilter,
+          from_saved_snapshot: fromSavedSnapshot,
         }),
       });
+
+      // Discard stale responses if a newer request was dispatched
+      if (activePlanReqIdRef.current !== currentReqId) {
+        return;
+      }
 
       if (resp.ok) {
         const data = await resp.json();
         setPlan(data);
         setApiOnline(true);
         setErrorMessage(null);
+        setActiveTab("plan");
+      } else if (resp.status === 404 && snapshotToUse.startsWith("corridor_") && !isBuildingRouteRef.current) {
+        setApiOnline(true);
+        handleBuildAndPlanRoute(origin, destination);
       } else {
-        const errText = await resp.text();
-        throw new Error(`API returned HTTP ${resp.status}: ${errText}`);
+        setApiOnline(true); // Server is reachable!
+        let detail = "";
+        try {
+          const json = await resp.json();
+          detail = json.detail || JSON.stringify(json);
+        } catch {
+          detail = await resp.text();
+        }
+        setErrorMessage(`Planning Error (HTTP ${resp.status}): ${detail || "Unable to compute trip plan"}`);
       }
     } catch (err: any) {
+      if (activePlanReqIdRef.current !== currentReqId) {
+        return;
+      }
       setApiOnline(false);
       setPlan(null);
       setErrorMessage(
-        `Backend Unreachable: Unable to connect to http://127.0.0.1:8000. Ensure the FastAPI server is running via 'python -m uvicorn api.main:app'. (${err.message || "Network request failed"})`
+        `Backend Unreachable: Unable to connect to ${API_BASE_URL}. Ensure the FastAPI server is running via 'python -m uvicorn api.main:app'. (${err?.message || "Failed to fetch"})`
       );
     } finally {
-      setIsLoading(false);
+      if (activePlanReqIdRef.current === currentReqId) {
+        setIsLoading(false);
+      }
     }
   }, [params]);
 
-  // Load vehicles and initial plan on mount
-  useEffect(() => {
-    fetchCars();
-    fetchPlan();
-  }, [fetchCars, fetchPlan]);
+  // 3. Lifecycle-safe asynchronous corridor route building and polling
+  const handleBuildAndPlanRoute = useCallback(async (
+    srcLoc: LocationWaypoint,
+    dstLoc: LocationWaypoint,
+    forceRefresh: boolean = true
+  ) => {
+    // Cancel any previous polling loop
+    if (pollCleanupRef.current) {
+      pollCleanupRef.current();
+      pollCleanupRef.current = null;
+    }
 
-  // Handler to load the clearly labeled static snapshot demo
-  const handleLoadStaticDemo = () => {
-    setPlan(STATIC_SNAPSHOT_DEMO_PLAN);
-    setVehicles([
-      {
-        id: "tata_nexon_ev_lr",
-        name: "Tata Nexon EV LR",
-        battery_kwh: 40.5,
-        max_dc_kw: 50.0,
-      },
-      {
-        id: "mg_zs_ev",
-        name: "MG ZS EV",
-        battery_kwh: 50.3,
-        max_dc_kw: 75.0,
-      },
-      {
-        id: "hyundai_ioniq_5",
-        name: "Hyundai Ioniq 5",
-        battery_kwh: 72.6,
-        max_dc_kw: 350.0,
-        is_placeholder_profile: true,
-      },
-      {
-        id: "tata_tiago_ev",
-        name: "Tata Tiago EV (Placeholder)",
-        battery_kwh: 24.0,
-        max_dc_kw: 25.0,
-        is_placeholder_profile: true,
-      },
-    ]);
-    setIsDemoSnapshotLoaded(true);
+    isBuildingRouteRef.current = true;
+    setIsLoading(true);
     setErrorMessage(null);
-  };
+
+    try {
+      const buildResp = await fetch(`${API_BASE_URL}/routes/build`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          origin: { lat: srcLoc.lat, lon: srcLoc.lon, label: srcLoc.label },
+          destination: { lat: dstLoc.lat, lon: dstLoc.lon, label: dstLoc.label },
+          use_synthetic: false,
+          force_refresh: forceRefresh,
+        }),
+      });
+
+      if (!buildResp.ok) {
+        setApiOnline(true);
+        let errDetail = "";
+        try {
+          const json = await buildResp.json();
+          errDetail = json.detail || JSON.stringify(json);
+        } catch {
+          errDetail = await buildResp.text();
+        }
+        isBuildingRouteRef.current = false;
+        setIsLoading(false);
+        setErrorMessage(`Failed to start route builder (HTTP ${buildResp.status}): ${errDetail}`);
+        return;
+      }
+
+      setApiOnline(true);
+      const initialJob = await buildResp.json();
+      setJobInfo({
+        jobId: initialJob.job_id,
+        status: initialJob.status,
+        progressStep: initialJob.progress_step || "Initializing corridor route pipeline...",
+        percent: initialJob.percent || 5,
+        originLabel: srcLoc.label,
+        destLabel: dstLoc.label,
+      });
+
+      // Polling state controls
+      let isCancelled = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+      let isPollInFlight = false;
+      let consecutiveFailures = 0;
+      const MAX_CONSECUTIVE_FAILURES = 5;
+      const MAX_POLL_TIMEOUT_MS = 240000; // Allow long corridors to finish public-provider requests.
+      const startTime = Date.now();
+
+      const cleanup = () => {
+        isCancelled = true;
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+      };
+      const failJob = (message: string) => {
+        cleanup();
+        isBuildingRouteRef.current = false;
+        setIsLoading(false);
+        setJobInfo((current) =>
+          current?.jobId === initialJob.job_id
+            ? {
+                ...current,
+                status: "failed",
+                progressStep: "Route build stopped",
+                errorMessage: message,
+              }
+            : current
+        );
+      };
+      pollCleanupRef.current = cleanup;
+
+      const pollNext = async () => {
+        if (isCancelled) return;
+
+        // Check overall timeout
+        if (Date.now() - startTime > MAX_POLL_TIMEOUT_MS) {
+          failJob("The route builder did not finish within 4 minutes. A slow provider may be delaying the build; retry when the provider is available.");
+          return;
+        }
+
+        // Prevent overlapping polls
+        if (isPollInFlight) return;
+        isPollInFlight = true;
+
+        try {
+          const jobResp = await fetch(`${API_BASE_URL}/jobs/${initialJob.job_id}`);
+          if (isCancelled) return;
+
+          if (jobResp.ok) {
+            setApiOnline(true);
+            consecutiveFailures = 0;
+            const job = await jobResp.json();
+            setJobInfo({
+              jobId: job.job_id,
+              status: job.status,
+              progressStep: job.progress_step,
+              percent: job.percent,
+              errorMessage: job.error_message,
+              originLabel: srcLoc.label,
+              destLabel: dstLoc.label,
+            });
+
+            if (job.status === "completed") {
+              cleanup();
+              isBuildingRouteRef.current = false;
+              const newSnapId = job.snapshot_id;
+              setParams((prev) => ({ ...prev, snapshotId: newSnapId }));
+              // The route-build overlay covers the map. Close it as soon as geometry
+              // is ready so the user can see the corridor while the trip is planned.
+              setJobInfo(null);
+              await fetchPlan(newSnapId);
+              return;
+            } else if (job.status === "failed") {
+              cleanup();
+              isBuildingRouteRef.current = false;
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            setApiOnline(true);
+            consecutiveFailures += 1;
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+              failJob(`Could not read route build status (HTTP ${jobResp.status}) after several attempts. Retry the route build.`);
+              return;
+            }
+          }
+        } catch (pollErr: any) {
+          if (isCancelled) return;
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            setApiOnline(false);
+            failJob(`Lost connection to the route builder after several attempts. ${pollErr?.message || "Check that the API server is running, then retry."}`);
+            return;
+          }
+        } finally {
+          isPollInFlight = false;
+          if (!isCancelled) {
+            timeoutHandle = setTimeout(pollNext, 700);
+          }
+        }
+      };
+
+      // Start initial poll cycle
+      timeoutHandle = setTimeout(pollNext, 700);
+    } catch (err: any) {
+      isBuildingRouteRef.current = false;
+      setApiOnline(false);
+      setIsLoading(false);
+      setErrorMessage(`Route build failed to start: ${err?.message || "Network error"}`);
+    }
+  }, [fetchPlan]);
+
+  // Manual refresh stations handler
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefreshStations = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await fetch(`${API_BASE_URL}/stations/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshot_id: params.snapshotId }),
+      });
+      await handleBuildAndPlanRoute(origin, destination);
+    } catch (err: any) {
+      console.error("Station refresh failed:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [params.snapshotId, handleBuildAndPlanRoute, origin, destination]);
+
+  // Initial load only fetches vehicle options. Route searches start only after an
+  // explicit user action, so a page refresh never silently builds a default route.
+  useEffect(() => {
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+    fetchCars();
+  }, [fetchCars]);
+
+
+  // Handle station selection across map and sidebar
+  const handleSelectStation = useCallback((stId: string) => {
+    setFocusedStationId(stId);
+  }, []);
+
+  const corridorTitle = useMemo(() => {
+    const srcCity = plan?.source_name || origin.label.split(",")[0].trim() || "Origin";
+    const dstCity = plan?.destination_name || destination.label.split(",")[0].trim() || "Destination";
+    const profileDistance = plan?.route_soc_profile?.[plan.route_soc_profile.length - 1]?.distance_km;
+    const routeDistance = Array.isArray(plan?.route_distance_km)
+      ? plan.route_distance_km[plan.route_distance_km.length - 1]
+      : plan?.route_distance_km;
+    const distText = plan ? ` (${Math.round(profileDistance ?? routeDistance ?? 0)} km)` : "";
+    return plan
+      ? `${srcCity} → ${dstCity} Corridor${distText}`
+      : "Search for a route";
+  }, [origin.label, destination.label, plan]);
+
+  const inputsDiffer = useMemo(() => {
+    if (!plan || !plan.source_name || !plan.destination_name) return false;
+    const inSrc = origin.label.split(",")[0].trim().toLowerCase();
+    const inDst = destination.label.split(",")[0].trim().toLowerCase();
+    const planSrc = plan.source_name.split(",")[0].trim().toLowerCase();
+    const planDst = plan.destination_name.split(",")[0].trim().toLowerCase();
+    return inSrc !== planSrc || inDst !== planDst;
+  }, [origin.label, destination.label, plan]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      {/* Top Header with Mandatory Provenance Badges */}
-      <BadgeHeader corridorName="Mumbai → Pune Synthetic Corridor" distanceKm={150.0} />
+    <div className="app-shell flex flex-col overflow-hidden bg-white text-gray-900">
+      {/* 48px Top Navigation Bar */}
+      <TopBar
+        hasPlan={Boolean(plan)}
+        synthetic={plan ? Boolean(plan.synthetic) : false}
+        dataProvenance={plan ? plan.data_provenance : "open_data_providers"}
+        isLiveBuild={plan ? Boolean(plan.is_live_build) : false}
+        corridorName={corridorTitle}
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        apiOnline={apiOnline}
+      />
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-6">
-        {/* Backend Connectivity Status Bar */}
-        <div className="flex flex-wrap items-center justify-between text-xs px-4 py-2.5 rounded-xl bg-slate-900/60 border border-slate-800 gap-3">
-          <div className="flex items-center space-x-2.5">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                apiOnline === true
-                  ? "bg-emerald-400 shadow-sm shadow-emerald-400/50"
-                  : apiOnline === false
-                  ? "bg-rose-500 shadow-sm shadow-rose-500/50"
-                  : "bg-slate-500"
-              }`}
+      {/* Main Single-Screen Application Body */}
+      <div className="app-body flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
+        {/* Left Side Panel (Collapsible on desktop, bottom sheet on mobile) */}
+        {isSidebarOpen && (
+          <Sidebar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            origin={origin}
+            destination={destination}
+            onChangeOrigin={setOrigin}
+            onChangeDestination={setDestination}
+            onBuildAndPlanRoute={handleBuildAndPlanRoute}
+            params={params}
+            onChangeParams={setParams}
+            onPlanTrip={(snapId?: string, fromSavedSnapshot: boolean = false) => fetchPlan(snapId || params.snapshotId, fromSavedSnapshot)}
+            isLoading={isLoading}
+            vehicles={vehicles}
+            plan={plan}
+            onSelectStation={handleSelectStation}
+            selectedStationId={focusedStationId}
+            mobileSheetState={mobileSheetState}
+            onChangeMobileSheetState={setMobileSheetState}
+            onRefreshStations={handleRefreshStations}
+            isRefreshing={isRefreshing}
+          />
+
+        )}
+
+        {/* Map Pane with Bottom Data Sources & Attribution Strip */}
+        <main className="flex-1 min-h-0 min-w-0 flex flex-col relative overflow-hidden bg-gray-50">
+          {/* Inputs Changed Warning Banner */}
+          {inputsDiffer && (
+            <div className="inputs-changed-banner absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-amber-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 text-xs font-semibold">
+              <span className="min-w-0 break-words">⚠️ Inputs changed ({origin.label.split(",")[0]} → {destination.label.split(",")[0]}) - plan is showing {plan?.source_name} → {plan?.destination_name}</span>
+              <button
+                onClick={() => handleBuildAndPlanRoute(origin, destination, true)}
+                className="bg-white text-amber-900 px-2.5 py-1 rounded text-xs font-bold hover:bg-amber-50 cursor-pointer shadow-xs transition-colors shrink-0"
+              >
+                Plan trip (Live providers)
+              </button>
+            </div>
+          )}
+
+          {/* Map & Overlaid Elevation/SoC Drawer Area */}
+          <div className="flex-1 min-h-0 min-w-0 relative w-full overflow-hidden">
+            <RouteMap
+              routePoints={plan ? plan.route_soc_profile : []}
+              routeGeometry={plan?.route_geometry || []}
+              chosenStops={
+                plan && plan.stops
+                  ? plan.stops.map((s: ChargingStopInfo) => ({
+                      station_id: s.station_id,
+                      station_name: s.station_name,
+                      operator: s.operator,
+                      lat: s.lat || 18.75,
+                      lon: s.lon || 73.4,
+                      arrival_soc: s.arrival_soc,
+                      departure_soc: s.departure_soc,
+                      charge_time_min: s.charge_time_min,
+                      max_kw: s.max_kw,
+                      charging_mode: s.charging_mode,
+                      charging_power_kw: s.charging_power_kw,
+                      reliability: s.reliability,
+                      route_distance_km: s.route_distance_km,
+                      power_assumed: s.power_assumed,
+                      connector_assumed: s.connector_assumed,
+                      spur_estimated: s.spur_estimated,
+                      data_provider_name: s.data_provider_name,
+                      data_provider_license: s.data_provider_license,
+                    }))
+                  : []
+              }
+              corridorStations={plan ? plan.corridor_stations || [] : []}
+              focusedStationId={focusedStationId}
+              hoveredDistanceKm={hoveredDistanceKm}
+              onHoverDistance={setHoveredDistanceKm}
+              onSelectStation={handleSelectStation}
+              activeTab={activeTab}
+              originLabel={plan?.source_name || origin.label}
+              destinationLabel={plan?.destination_name || destination.label}
             />
-            <span className="text-slate-300 font-medium">
-              {apiOnline === true ? (
-                <span>Connected to Route.ev FastAPI Backend (<code className="text-emerald-400">http://127.0.0.1:8000</code>)</span>
-              ) : (
-                <span className="text-rose-400">Backend Server Offline</span>
-              )}
-            </span>
-          </div>
 
-          <div className="flex items-center gap-3 font-mono text-[11px] text-slate-400">
-            {isDemoSnapshotLoaded && (
-              <span className="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-500/50 font-bold">
-                [STATIC SNAPSHOT DEMO - DATA FROZEN]
-              </span>
+            {/* Bottom Docked Collapsible Battery SoC & Elevation Profile */}
+            {plan && plan.route_soc_profile && (
+              <RouteSocProfileDrawer
+                profile={plan.route_soc_profile}
+                stops={plan.stops || []}
+                reserveSoc={params.reserveSoc}
+                hoveredDistanceKm={hoveredDistanceKm}
+                onHoverDistance={setHoveredDistanceKm}
+                onSelectStation={handleSelectStation}
+                originLabel={plan?.source_name || origin.label}
+                destinationLabel={plan?.destination_name || destination.label}
+              />
             )}
-            <span>Phase 11 Production Next.js UI</span>
           </div>
-        </div>
 
-        {/* Explicit Error State Banner (Requirement 3: No silent fallback simulation) */}
-        {errorMessage && (
-          <div className="glass-panel border-rose-500/50 bg-rose-950/20 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-start space-x-3.5">
-              <div className="w-8 h-8 rounded-lg bg-rose-900/50 border border-rose-500/40 text-rose-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Backend Connection Error</h3>
-                <p className="text-xs text-rose-300/90 font-mono mt-1 leading-relaxed max-w-2xl">
-                  {errorMessage}
-                </p>
-                <p className="text-[11px] text-slate-400 mt-2">
-                  Client-side silent fallback is disabled. To evaluate the interface without running the backend server, you may load the clearly labeled static snapshot fixture below.
-                </p>
-              </div>
+          {/* Compact map and station data attribution */}
+          {plan?.corridor_stations.some((station) => station.source === "ocm" || station.source === "ocm_snapshot") && (
+            <div className="w-full bg-white border-t border-gray-200 px-3 py-1 text-[10px] text-gray-500 flex items-center justify-end shrink-0 select-none">
+              Station data: <a href="https://openchargemap.org" target="_blank" rel="noopener noreferrer" className="ml-1 hover:text-gray-800">Open Charge Map (CC BY 4.0)</a>
             </div>
+          )}
 
-            <div className="flex flex-wrap sm:flex-col gap-2 flex-shrink-0">
-              <button
-                onClick={() => {
-                  fetchCars();
-                  fetchPlan();
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all active:scale-95 text-center shadow-md shadow-emerald-500/20"
-              >
-                Retry Backend Connection
-              </button>
-              <button
-                onClick={handleLoadStaticDemo}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all text-center"
-              >
-                Load Static Snapshot Demo
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Trip Controls (Vehicles loaded from /cars only) */}
-        <TripControlPanel
-          params={params}
-          onChange={setParams}
-          onPlanTrip={fetchPlan}
-          isLoading={isLoading}
-          vehicles={vehicles}
-        />
-
-        {/* Interactive Leaflet Map (Requirement 1) */}
-        {plan && (
-          <RouteMap
-            routePoints={plan.route_soc_profile}
-            chosenStops={plan.stops.map((s) => ({
-              station_id: s.station_id,
-              station_name: s.station_name,
-              operator: s.operator,
-              lat: (s as any).lat || (plan.route_soc_profile[Math.floor(plan.route_soc_profile.length / 2)]?.lat ?? 18.75),
-              lon: (s as any).lon || (plan.route_soc_profile[Math.floor(plan.route_soc_profile.length / 2)]?.lon ?? 73.4),
-              arrival_soc: s.arrival_soc,
-              departure_soc: s.departure_soc,
-              charge_time_min: s.charge_time_min,
-              max_kw: s.max_kw,
-              reliability: s.reliability,
-            }))}
-            corridorStations={plan.corridor_stations || []}
-            focusedStationId={focusedStationId}
-            hoveredDistanceKm={hoveredDistanceKm}
-            onHoverDistance={setHoveredDistanceKm}
-            onSelectStation={(stId) => setFocusedStationId(stId)}
-          />
-        )}
-
-        {/* Plan Summary Card (Requirement 2: live expanded, relaxed, build_ms, search_ms) */}
-        <PlanSummaryCard plan={plan} comfortLambda={params.comfortLambda} />
-
-        {/* Elevation & SoC Profile Chart (Distance-aligned hover sync) */}
-        {plan && (
-          <RouteSocProfileChart
-            profile={plan.route_soc_profile}
-            stops={plan.stops}
-            reserveSoc={params.reserveSoc}
-            hoveredDistanceKm={hoveredDistanceKm}
-            onHoverDistance={setHoveredDistanceKm}
-          />
-        )}
-
-        {/* 2-Column Section: Itinerary (Click to focus map) + Pareto Frontier */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {plan && (
-            <ChargingItineraryTimeline
-              stops={plan.stops}
-              selectedStopId={focusedStationId}
-              onSelectStop={(stId) => setFocusedStationId(stId)}
+          {/* Route Building Progress Modal */}
+          {jobInfo && (
+            <RouteProgressModal
+              job={jobInfo}
+              onClose={() => setJobInfo(null)}
+              onRetry={() => handleBuildAndPlanRoute(origin, destination)}
             />
           )}
 
-          {plan && (
-            <ParetoFrontierView
-              points={plan.pareto_frontier}
-              currentLambda={params.comfortLambda}
-              onSelectLambda={(l) => setParams((prev) => ({ ...prev, comfortLambda: l }))}
+          {/* Backend Error Modal Overlay (Displayed if backend is unreachable) */}
+          {errorMessage && (
+            <BackendErrorModal
+              errorMessage={errorMessage}
+              onRetry={() => {
+                fetchCars();
+                fetchPlan();
+              }}
+              onClose={() => setErrorMessage(null)}
+              isLoading={isLoading}
             />
           )}
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/80 py-4 mt-8">
-        <div className="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500 font-mono">
-          Route.ev — Advanced Algorithmic EV Trip Planner & Multi-Objective Engine • Generic Corridor Architecture
-        </div>
-      </footer>
+        </main>
+      </div>
     </div>
   );
 }

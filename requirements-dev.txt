@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=7.0.0
+hypothesis>=6.80.0
+ruff>=0.1.0
+httpx>=0.24.0

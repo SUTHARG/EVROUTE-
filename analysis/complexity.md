@@ -18,18 +18,20 @@ Let $G_{\text{road}} = (V, E)$ denote the physical road network graph, where:
 - **Cycle Detection**: If relaxation succeeds on the $|V|$-th iteration, a physical violation (perpetual motion machine / negative energy cycle) is detected and an error is raised.
 - **Space Complexity**: $\mathcal{O}(|V|)$ to store distance and predecessor maps.
 
-### 1.2 Johnson's Reweighting Algorithm
-- **Objective**: Computes all-pairs shortest paths between milestone nodes (source, chargers, and destination) in a graph with negative edge weights without suffering $\mathcal{O}(|V|^2 |E|)$ overhead.
-- **Formulation**:
+### 1.2 Johnson's Reweighting vs. Implemented Bellman-Ford per Terminal
+- **Theoretical Johnson's Reweighting Formulation**:
   1. Add auxiliary node $q$ with zero-weight directed edges $(q, u)$ to all $u \in V$.
   2. Run Bellman-Ford from $q$ once to compute node potentials $h(u)$. Complexity: $\mathcal{O}(|V| \cdot |E|)$.
   3. Reweight every edge $(u, v) \in E$:
      $$\hat{w}(u, v) = w(u, v) + h(u) - h(v) \ge 0$$
      Telescoping property guarantees that all shortest paths are strictly preserved.
   4. Run Dijkstra with a binary min-heap from each charger/terminal milestone node $u \in V_c$. Complexity: $\mathcal{O}(|V_c| \cdot |E| \log |V|)$.
-- **Total Asymptotic Time Complexity**:
-  $$\mathcal{O}(|V| \cdot |E| + |V_c| \cdot |E| \log |V|)$$
-  where $|V_c|$ is the number of candidate charger attachment nodes ($|V_c| \ll |V|$).
+  Total Theoretical Asymptotic Complexity: $\mathcal{O}(|V| \cdot |E| + |V_c| \cdot |E| \log |V|)$.
+- **Actual Implemented Routine (`core/charger_graph.py`)**:
+  Rather than running Johnson's reweighting, the codebase executes Bellman-Ford independently from each terminal $u \in V_c$ on the eco metric (`energy_kwh`), alongside Dijkstra on traversal time (`time_s`).
+  - Implemented Shortest-Path Time Complexity:
+    $$\mathcal{O}\left( |V_c| \cdot (|E| \log |V| + |V| \cdot |E|) \right)$$
+    where $|V_c|$ is the number of candidate charger attachment nodes ($|V_c| \ll |V|$).
 - **Space Complexity**: $\mathcal{O}(|V| + |E|)$.
 
 ---
@@ -37,18 +39,18 @@ Let $G_{\text{road}} = (V, E)$ denote the physical road network graph, where:
 ## 2. Greedy Range-Preserving Charger Filtering
 
 Let $C$ denote the set of candidate chargers retrieved from live APIs or fixtures ($|C| \approx 20 - 100$).
-- **Step 1: Connector & Power Filter**: $\mathcal{O}(|C|)$ scan filtering out incompatible plugs (e.g. non-CCS2) and underpowered AC plugs.
-- **Step 2: Projection & Sorting**: Compute projected distance along the corridor and sort chargers: $\mathcal{O}(|C| \log |C|)$.
+- **Step 1: Connector & Minimum-Power Filter**: $\mathcal{O}(|C|)$ scan filtering out incompatible plugs (matching ANY supported plug) and chargers below `min_power_kw`.
+- **Step 2: Projection & Sorting**: Compute projected 1D distance along the corridor and sort chargers: $\mathcal{O}(|C| \log |C|)$.
 - **Step 3: Quality Thresholding**: Discard chargers with amenity / reliability score below threshold: $\mathcal{O}(|C|)$.
 - **Step 4: Greedy Loop Reinstatement (Gap Bridging)**:
-  - Iterates through consecutive kept chargers.
-  - Computes reachability using usable range:
+  - Iterates through consecutive kept chargers and checks reachability using usable range:
     $$\text{range}_{\text{usable}} = \frac{\text{battery}_{\text{usable}} \cdot (1.0 - \text{reserve})}{c_{\text{km}}}$$
-  - For the first leg from source, range is adjusted by $\text{start\_soc} - \text{reserve}$.
-  - If a gap between milestone $i$ and $i+1$ exceeds vehicle range, scans intermediate discarded stations and reinstates the highest-scoring candidate until the gap is bridged or proven unbridgeable.
-  - Each discarded station is inspected at most once per gap.
+  - For the initial leg from origin, range is scaled by $\text{start\_soc} - \text{reserve}$.
+  - If a gap exceeds vehicle range, scans intermediate discarded stations and reinstates the highest-scoring candidate.
+  - In the worst case, each gap check requires a scan through discarded candidates and re-indexing of the kept sequence; with up to $|C|$ potential reinstatements, this repeated sort/scan loop requires $\mathcal{O}(|C|^2)$ operations in the worst case.
 - **Total Asymptotic Complexity**:
-  $$\text{Time: } \mathcal{O}(|C| \log |C|), \quad \text{Space: } \mathcal{O}(|C|)$$
+  $$\text{Time: } \mathcal{O}(|C| \log |C| + |C|^2) = \mathcal{O}(|C|^2) \quad (\text{worst case}), \quad \mathcal{O}(|C| \log |C|) \quad (\text{typical case without gap reinstatements})$$
+  $$\text{Space: } \mathcal{O}(|C|)$$
 
 ---
 
@@ -56,10 +58,12 @@ Let $C$ denote the set of candidate chargers retrieved from live APIs or fixture
 
 Let $V_c = \text{KeptStations} \cup \{\text{source}, \text{dest}\}$.
 - The reduced graph contracts thousands of intermediate road nodes into high-level transitions between charging stops:
-  - For each pair $(u, v)$ where $v$ is downstream from $u$, two candidate road paths are evaluated:
+  - For each pair $(u, v)$ where $v$ is downstream from $u$, candidate road paths are evaluated:
     1. **Fastest path**: Dijkstra on physical travel time $t_s$.
     2. **Eco path**: Bellman-Ford on mechanical energy $e_{\text{kwh}}$ (with regen).
   - Both candidate paths are simulated across all $K+1$ discrete departure levels ($0 \dots K$) with 100% capacity clamping to produce the pre-tabulated `arrival_soc_table`.
+- **Two-Candidate-Paths Limitation**:
+  For each terminal pair $(u, v)$, the reduced graph considers at most two candidate paths: fastest and eco. In general networks, intermediate Pareto-optimal road paths (e.g., paths with moderate speed and moderate regen that avoid battery clamping or steep elevation peaks) could theoretically exist that dominate both candidates under specific battery states. Restricting to {fastest, eco} is an efficient corridor heuristic that captures the primary time-vs-energy trade-off while keeping graph construction polynomial.
 - **Complexity**:
   - Number of reduced pairs: $|E_c| \le \frac{|V_c|(|V_c|-1)}{2} = \mathcal{O}(|V_c|^2)$.
   - Step-by-step simulation per pair: $\mathcal{O}(K \cdot L_{\text{path}})$ where $L_{\text{path}}$ is the number of road edges between $u$ and $v$ ($L_{\text{path}} \le |V|$).
@@ -110,36 +114,38 @@ If dynamic programming were executed directly on the physical road graph without
 - **Uncontracted State Space**: $|V_{\text{road}}| \cdot K$ states ($2{,}495 \times 30 = 74{,}850$ potential states), relaxing $|E_{\text{road}}| \cdot K$ driving transitions edge-by-edge along the highway.
 - **Contracted State Space**: $2 |V_c| \cdot K$ states ($2 \times 5 \times 30 = 300$ states), bypassing all intermediate road node relaxations.
 
-**Empirical Measured Baseline (`analysis/benchmarks.py`, Benchmark 5)**:
-Using the 2,495-node Mumbai–Pune corridor snapshot (`unverified_mumbai_pune.json`) with $|V_{\text{road}}| = 2{,}495$, $|V_c| = 5$, and $K = 30$:
+**Empirical Measured Baseline (`analysis/benchmarks.py`, Benchmark 5; dynamically loaded from `analysis/benchmark_results.json`)**:
+Using the 2,495-node Mumbai–Pune corridor snapshot (`unverified_mumbai_pune.json` / `default_mumbai_pune.json`) with $|V_{\text{road}}| = 2{,}495$, $|V_c| = 5$, and $K = 30$:
 - **Contracted 2-Layer DP**:
-  - Graph Build Time: **89.12 ms**
-  - Search Time: **12.64 ms**
+  - Graph Build Time: **133.17 ms**
+  - Search Time: **17.06 ms**
   - States Expanded: **261**
   - Edges Relaxed: **1,919**
-- **Uncontracted Full Road Graph DP**:
-  - Search Time: **86.34 ms**
-  - States Expanded: **30,103**
-  - Edges Relaxed: **31,815**
+  - Cost J: **137.42 min**
+- **Uncontracted Full Road Graph DP** (using matching grid-floor discretization):
+  - Search Time: **80.73 ms**
+  - States Expanded: **29,510**
+  - Edges Relaxed: **30,869**
+  - Cost J: **137.42 min** (exact equality verified within $10^{-6}$ tolerance, $\Delta J < 10^{-12}$)
 - **Contraction Impact**:
-  - State expansions reduced by **115.3×** (30,103 $\to$ 261).
-  - Search-only speedup: **6.8×** (86.34 ms $\to$ 12.64 ms).
-  - Single-query end-to-end speedup: **0.8×** (86.34 ms $\to$ 101.76 ms, build overhead dominates cold single query).
-  - Amortized speedup over 15-$\lambda$ sweep: **4.6×** (1295.1 ms $\to$ 278.7 ms).
-  - Amortized speedup over 8-$\lambda$ Pareto sweep: **3.6×** (690.7 ms $\to$ 190.2 ms).
+  - State expansions reduced by **113.1×** (29,510 $\to$ 261).
+  - Search-only speedup: **4.7×** (80.73 ms $\to$ 17.06 ms).
+  - Single-query end-to-end speedup: **0.5×** (80.73 ms $\to$ 150.23 ms, build overhead dominates cold single query).
+  - Amortized speedup over 15-$\lambda$ sweep: **2.5×**.
+  - Amortized speedup over 8-$\lambda$ Pareto sweep: **2.1×**.
 
 ### 4.5 Empirical vs. Theoretical Scaling Slopes
-Fitting log-log slopes across empirical runs in Benchmarks 1 and 2 yields:
-- **Search time vs. $|V_c|$**: Empirical slope **1.36** (Theoretical worst case: $\mathcal{O}(|V_c|^2) = 2.0$, reduced to near-linear due to range-limited forward visibility).
-- **Search time vs. $K$**: Empirical slope **1.67** (Theoretical worst case: $\mathcal{O}(K^2) = 2.0$).
+Fitting log-log slopes across empirical runs in Benchmarks 1 and 2 (`analysis/benchmark_results.json`) yields:
+- **Search time vs. $|V_c|$**: Empirical slope **1.24** (Theoretical worst case: $\mathcal{O}(|V_c|^2) = 2.0$, reduced to near-linear due to range-limited forward visibility).
+- **Search time vs. $K$**: Empirical slope **1.72** (Theoretical worst case: $\mathcal{O}(K^2) = 2.0$).
 
 **Why are empirical slopes below theoretical upper bounds?**
 1. **Range-Limited Reduced Edges (for $|V_c|$)**:
-   In a general complete graph, $|E_c| = \frac{|V_c|(|V_c|-1)}{2} = \mathcal{O}(|V_c|^2)$. However, along an EV highway corridor, reachable reduced edges are physically bounded by vehicle battery capacity (e.g., 150–250 km). A station at km 30 cannot directly reach a station at km 180 without exhausting battery reserves; such edges are pruned during reduced graph construction (`arrival_soc_table` entries are all infeasible / `None`). Thus, the effective out-degree of each station is bounded by a constant local horizon ($\text{deg}(u) \le d_{\max} \ll |V_c|$), reducing the number of driving transitions to $\mathcal{O}(|V_c|)$ rather than $\mathcal{O}(|V_c|^2)$, leading to the measured slope of **1.32**.
+   In a general complete graph, $|E_c| = \frac{|V_c|(|V_c|-1)}{2} = \mathcal{O}(|V_c|^2)$. However, along an EV highway corridor, reachable reduced edges are physically bounded by vehicle battery capacity (e.g., 150–250 km). A station at km 30 cannot directly reach a station at km 180 without exhausting battery reserves; such edges are pruned during reduced graph construction (`arrival_soc_table` entries are all infeasible / `None`). Thus, the effective out-degree of each station is bounded by a constant local horizon ($\text{deg}(u) \le d_{\max} \ll |V_c|$), reducing the number of driving transitions to $\mathcal{O}(|V_c|)$ rather than $\mathcal{O}(|V_c|^2)$, leading to the measured slope of **1.24**.
 2. **Forward Charging and Min-Heap Pruning (for $K$)**:
    In theory, all pairs of $(s_{\text{arr}}, s_{\text{dep}})$ could produce $(K+1)^2/2$ charging transitions. In practice:
    - Charging transitions only branch strictly forward ($s_{\text{dep}} > s_{\text{arr}}$).
-   - Dijkstra's algorithm with a priority queue extracts states in order of increasing scalar cost $J$. Dominated, high-cost states with lower arrival SoC at a station are extracted later and pruned early before their entire charging fans are explored, yielding a measured scaling exponent of **1.67** rather than 2.0.
+   - Dijkstra's algorithm with a priority queue extracts states in order of increasing scalar cost $J$. Dominated, high-cost states with lower arrival SoC at a station are extracted later and pruned early before their entire charging fans are explored, yielding a measured scaling exponent of **1.72** rather than 2.0.
 
 ---
 
@@ -154,8 +160,8 @@ $$|\mathcal{P}_{\text{exact}}| = \mathcal{O}(2^{|V_c|})$$
 
 This fundamental theoretical limitation is established in the classical literature:
 - **Hansen, P. (1980)**: *"Bicriterion Path Problems."* In: Fandel, G., Gal, T. (eds) *Multiple Criteria Decision Making Theory and Application*, Lecture Notes in Economics and Mathematical Systems, vol 177, pp. 109–127. Springer, Berlin, Heidelberg. (Proves that the number of Pareto-optimal paths in a graph with non-negative edge weights can grow as $2^{\Omega(|V|)}$ in the worst case).
-- **Warburton, A. (1987)**: *"Approximation of Pareto optima in multiple-objective, shortest-path problems."* *Operations Research*, 35(1), pp. 70–79. (Proves NP-hardness of multi-objective path problems and analyzes the combinatorial explosion of non-dominated frontiers).
-- **Müller-Hannemann, M., & Weihe, K. (2001)**: *"Pareto shortest paths is often feasible in practice."* *ACM Journal of Experimental Algorithmics (JEA)*, 6, 11-es. (Analyzes worst-case exponential state explosion versus contracted practical performance).
+- **Müller-Hannemann, M., & Weihe, K. (2001)**: *"Pareto Shortest Paths is Often Feasible in Practice."* In: Brodal, G.S., Frigioni, D., Marchetti-Spaccamela, A. (eds) *Algorithm Engineering. WAE 2001*. Lecture Notes in Computer Science, vol 2141, pp. 185–197. Springer, Berlin, Heidelberg. (Analyzes worst-case exponential state explosion versus contracted practical performance).
+- **Warburton, A. (1987)**: *"Approximation of Pareto optima in multiple-objective, shortest-path problems."* *Operations Research*, 35(1), pp. 70–79. (Analyzes fully polynomial-time approximation schemes (FPTAS) and approximation guarantees for multi-objective shortest path problems).
 
 Tracking non-dominated vectors at every intermediate node requires maintaining non-dominated sets that double with each sequential charging decision, making exact multi-dimensional Pareto enumeration computationally intractable for large networks.
 

@@ -187,6 +187,11 @@ def generate_synthetic_corridor(
             detour_distance_m=detour_round_trip_m,
             detour_time_s=detour_time_s,
             detour_energy_kwh=detour_energy_kwh,
+            power_assumed=False,
+            connector_assumed=False,
+            amenity_known=False,
+            spur_estimated=True,
+            source="synthetic",
         )
         stations.append(station)
 

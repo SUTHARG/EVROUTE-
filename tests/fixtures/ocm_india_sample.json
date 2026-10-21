@@ -1,0 +1,28 @@
+[
+  {
+    "ID": 101,
+    "AddressInfo": {
+      "Title": "Test India Charger",
+      "Latitude": 18.52,
+      "Longitude": 73.85,
+      "ISOCode": "IN"
+    },
+    "DataProvider": {
+      "Title": "Open Charge Map Contributors",
+      "License": "CC BY 4.0",
+      "WebsiteURL": "https://openchargemap.org"
+    },
+    "Connections": [
+      {
+        "ConnectionType": {
+          "Title": "CCS (Type 2)"
+        },
+        "PowerKW": 60.0,
+        "Quantity": 2
+      }
+    ],
+    "StatusType": {
+      "IsOperational": true
+    }
+  }
+]

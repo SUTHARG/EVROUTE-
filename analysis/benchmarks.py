@@ -320,18 +320,18 @@ def solve_full_road_graph_dp(
     station_at_node = {node_id: st for st in snapshot.stations if (node_id := st_map.get(st.id)) is not None}
 
     t0 = time.perf_counter()
-    dist: dict[tuple[int, int], float] = {(source_node, start_s): 0.0}
-    kwh_at_state: dict[tuple[int, int], float] = {(source_node, start_s): start_kwh}
-    pq: list[tuple[float, float, int, int]] = [(0.0, -start_kwh, source_node, start_s)]
+    # 2-layer state: (u, s, is_dep) ensures charging departure state does not overwrite driving arrival state
+    dist: dict[tuple[int, int, bool], float] = {(source_node, start_s, True): 0.0}
+    pq: list[tuple[float, float, int, int, bool]] = [(0.0, -start_kwh, source_node, start_s, True)]
 
     best_dest_cost = float("inf")
     states_expanded = 0
     edges_relaxed = 0
 
     while pq:
-        curr_d, neg_kwh, u, s = heapq.heappop(pq)
+        curr_d, neg_kwh, u, s, is_dep = heapq.heappop(pq)
         curr_kwh = -neg_kwh
-        if curr_d > dist.get((u, s), float("inf")) + 1e-9:
+        if curr_d > dist.get((u, s, is_dep), float("inf")) + 1e-9:
             continue
 
         states_expanded += 1
@@ -352,22 +352,22 @@ def solve_full_road_graph_dp(
             next_s = discretize_soc_level(next_soc, K)
             drive_time_min = edge.time_s / 60.0
             new_cost = curr_d + drive_time_min
+            next_state = (v, next_s, False)
 
-            if new_cost < dist.get((v, next_s), float("inf")) - 1e-9:
-                dist[(v, next_s)] = new_cost
-                kwh_at_state[(v, next_s)] = next_kwh
-                heapq.heappush(pq, (new_cost, -next_kwh, v, next_s))
+            if new_cost < dist.get(next_state, float("inf")) - 1e-9:
+                dist[next_state] = new_cost
+                heapq.heappush(pq, (new_cost, -next_kwh, v, next_s, False))
 
-        # 2. Charge at station if present at node u
-        if u in station_at_node:
+        # 2. Charge at station if present at node u and in arrived state (not already departed)
+        if u in station_at_node and not is_dep:
             station = station_at_node[u]
-            curr_soc = curr_kwh / car.usable_battery_kwh
+            s_in_soc = level_to_soc(s, K)
 
             for s_dep in range(s + 1, K + 1):
                 edges_relaxed += 1
                 s_dep_soc = level_to_soc(s_dep, K)
                 t_chg = charge_time_min(
-                    s_in=curr_soc,
+                    s_in=s_in_soc,
                     s_out=s_dep_soc,
                     station_max_kw=station.max_kw,
                     car=car,
@@ -376,18 +376,18 @@ def solve_full_road_graph_dp(
                     dwell_min=t_chg,
                     amenity_score=station.amenity_score,
                     is_real_charge=True,
-                    arrival_soc=curr_soc,
+                    arrival_soc=s_in_soc,
                     stop_threshold_soc=trip.stop_threshold_soc,
                     gamma=trip.gamma,
                 )
                 chg_cost = t_chg + lambda_val * d_chg
                 new_cost = curr_d + chg_cost
                 dep_kwh = s_dep_soc * car.usable_battery_kwh
+                dep_state = (u, s_dep, True)
 
-                if new_cost < dist.get((u, s_dep), float("inf")) - 1e-9:
-                    dist[(u, s_dep)] = new_cost
-                    kwh_at_state[(u, s_dep)] = dep_kwh
-                    heapq.heappush(pq, (new_cost, -dep_kwh, u, s_dep))
+                if new_cost < dist.get(dep_state, float("inf")) - 1e-9:
+                    dist[dep_state] = new_cost
+                    heapq.heappush(pq, (new_cost, -dep_kwh, u, s_dep, True))
 
     runtime_ms = (time.perf_counter() - t0) * 1000.0
     return best_dest_cost, runtime_ms, states_expanded, edges_relaxed
@@ -399,7 +399,9 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
     planner = EVPlanner()
     K = 30
 
-    real_path = Path("data/snapshots/unverified_mumbai_pune.json")
+    real_path = Path("tests/fixtures/unverified_mumbai_pune.json")
+    if not real_path.exists():
+        real_path = Path("data/snapshots/default_mumbai_pune.json")
     if real_path.exists():
         with open(real_path) as f:
             snapshot = CorridorSnapshot(**json.load(f))
@@ -424,8 +426,10 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
     print("\n--- Benchmark 5: Full Road Graph DP vs Contracted Charger Graph DP ---")
     print(f"Graph size: |V_road| = {len(snapshot.nodes)} nodes, |V_c| = {len(snapshot.stations)} stations, K = {K}")
 
-    # 1. Contracted 2-layer charger graph DP
+    # Use identical number of timing trials (5) for all methods
     trials = 5
+
+    # 1. Contracted 2-layer charger graph DP
     t_build_sum = 0.0
     t_search_sum = 0.0
     plan = None
@@ -446,16 +450,15 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
     )
     ec_vc_ratio = n_ec / max(1, len(snapshot.stations))
 
-    # 2. Uncontracted full road graph DP
-    trials_full = 3
+    # 2. Uncontracted full road graph DP (same 5 trials)
     t_full_sum = 0.0
     full_cost = 0.0
     full_states = 0
     full_relaxed = 0
-    for _ in range(trials_full):
+    for _ in range(trials):
         full_cost, r_ms, full_states, full_relaxed = solve_full_road_graph_dp(snapshot, car, trip, lambda_val=0.0)
         t_full_sum += r_ms
-    full_road_ms = t_full_sum / trials_full
+    full_road_ms = t_full_sum / trials
 
     # 3. Measured amortized sweeps (reusing precomputed reduced graph)
     # A. 15-lambda sweep
@@ -478,11 +481,11 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
     uncontracted_8_ms = full_road_ms * 8
     amortized_8_speedup = uncontracted_8_ms / max(0.01, contracted_8_total_ms)
 
-    # Assert both return optimal J within tolerance (accounting for discretization slack & spur detours)
+    # Assert exact cost equality within 1e-6 (strict mathematical equivalence)
     cost_diff = abs(contracted_cost - full_cost)
-    assert cost_diff <= 3.0, (
-        f"Optimal J discrepancy exceeds 3.0 min tolerance: contracted {contracted_cost:.2f} min vs "
-        f"uncontracted {full_cost:.2f} min (diff = {cost_diff:.2f} min)"
+    assert cost_diff < 1e-6, (
+        f"Optimal J discrepancy exceeds 1e-6 tolerance: contracted {contracted_cost:.8f} min vs "
+        f"uncontracted {full_cost:.8f} min (diff = {cost_diff:.2e} min)"
     )
 
     search_speedup = full_road_ms / max(0.01, contracted_search_ms)
@@ -496,10 +499,7 @@ def benchmark_full_road_graph_vs_reduced() -> dict[str, Any]:
     print(
         f"Uncontracted Road Graph DP:   Search={full_road_ms:>5.2f} ms | Cost={full_cost:.2f} min | States={full_states} | Relaxed={full_relaxed}"
     )
-    print(f"[+] Objective Comparison (|J_contracted - J_uncontracted| = {cost_diff:.2f} min <= 3.0 min tolerance):")
-    print("    Discrepancy (1.27 min) explained by:")
-    print("    (1) Uncontracted DP at lambda=0 distributes recharge across 4 micro-stops (11.04m total) without dwell penalty;")
-    print("    (2) Contracted DP evaluates macro single-stop transitions and floors arrival SoC to discrete grid (K=30 slack <= 1.54 min).")
+    print(f"[+] Objective Comparison (|J_contracted - J_uncontracted| = {cost_diff:.2e} min < 1e-6 tolerance): VERIFIED EXACT EQUALITY")
     print(f"[+] Reduced Charger Graph Topology: |V_c|={len(snapshot.stations)}, |E_c|={n_ec} edges (|E_c|/|V_c| = {ec_vc_ratio:.2f})")
     print(f"[+] Single-Query End-to-End Speedup (Uncontracted Search vs Contracted Build+Search): {total_speedup:.1f}x")
     print(f"[+] Search-Only Speedup: {search_speedup:.1f}x (State expansions reduced by {state_reduction:.1f}x)")
@@ -628,6 +628,11 @@ def main():
     }
     with open("analysis/benchmark_results.json", "w", encoding="utf-8") as f:
         json.dump(bench_data, f, indent=2)
+
+    ui_data_path = Path("ui/src/data/benchmark_results.json")
+    if ui_data_path.parent.exists():
+        with open(ui_data_path, "w", encoding="utf-8") as f:
+            json.dump(bench_data, f, indent=2)
 
     plot_all_benchmarks(res_vc, res_k, res_bf, res_conv, res_baseline)
 

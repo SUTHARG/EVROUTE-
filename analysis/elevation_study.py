@@ -22,7 +22,9 @@ from ingest.route import haversine_distance_m
 
 
 def run_elevation_study():
-    snapshot_path = Path("data/snapshots/unverified_mumbai_pune.json")
+    snapshot_path = Path("tests/fixtures/unverified_mumbai_pune.json")
+    if not snapshot_path.exists():
+        snapshot_path = Path("data/snapshots/default_mumbai_pune.json")
     fixture_path = Path("tests/fixtures/sample_osrm_route.json")
 
     with open(snapshot_path, "r", encoding="utf-8") as f:
@@ -41,9 +43,17 @@ def run_elevation_study():
     edge_times = [e.get("time_s", 3.0) for e in edges] if edges else []
     edge_lengths = [e.get("length_m", 60.0) for e in edges] if edges else []
 
+    # Verify elevations are present in snapshot; fail loudly if missing
+    snapshot_elevs = [n.get("elevation_m") for n in data.get("nodes", {}).values()]
+    if not snapshot_elevs or any(e is None for e in snapshot_elevs):
+        raise ValueError(f"Snapshot at {snapshot_path} is missing elevation_m on road nodes!")
+    if max(snapshot_elevs) - min(snapshot_elevs) < 1.0 and all(e == 0.0 for e in snapshot_elevs):
+        raise ValueError(f"Snapshot at {snapshot_path} has zero elevation across all nodes (elevation data missing)!")
+
     # Retrieve truly raw OpenTopoData SRTM 30m altitudes from local cache
     raw_elevs = sample_elevations(coords, allow_network=False)
-    assert len(raw_elevs) == len(coords), f"Missing cached elevations: {len(raw_elevs)} != {len(coords)}"
+    if not raw_elevs or len(raw_elevs) != len(coords):
+        raise ValueError(f"Missing elevation data for route: got {len(raw_elevs)} altitudes for {len(coords)} nodes")
 
     start_elev = raw_elevs[0]
     end_elev = raw_elevs[-1]
@@ -122,10 +132,17 @@ def run_elevation_study():
             f"{energies[w]:>7.3f} kWh    | {e_diff:>+6.3f} kWh ({pct_e:>+4.1f}%)"
         )
     print("=" * 75)
+    w3_asc_diff = ascents[3] - raw_asc
+    w3_pct_asc = (w3_asc_diff / raw_asc) * 100.0 if raw_asc > 0 else 0.0
+    w3_e_diff = energies[3] - raw_energy
+    w3_pct_e = (w3_e_diff / raw_energy) * 100.0 if raw_energy > 0 else 0.0
+    net_climb = end_elev - start_elev
+
     print("Snapshot Smoothing Choice: The corridor snapshot uses Window 3 (w=3) moving average,")
-    print("which eliminates high-frequency sensor noise (-20.7% spurious ascent) while preserving")
-    print("the physical 559m Western Ghats climb and resulting in a negligible -0.214 kWh (-0.9%)")
+    print(f"which eliminates high-frequency sensor noise ({w3_pct_asc:.1f}% spurious ascent) while preserving")
+    print(f"the physical {net_climb:.0f}m Western Ghats climb and resulting in a {w3_e_diff:+.3f} kWh ({w3_pct_e:+.1f}%)")
     print("energy difference compared to the raw profile.")
+    print("=" * 75)
     print("=" * 75)
 
     # Plot raw vs smoothed profiles

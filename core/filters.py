@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from core.config import ALLOW_UNKNOWN_CONNECTORS
 from core.models import Car, Station
 from ingest.route import haversine_distance_m
 
@@ -49,30 +50,34 @@ def filter_stations_greedy(
     start_soc: float = 1.0,
     reserve_soc: float = 0.10,
     score_threshold: float = 0.35,
-    target_connector: str = "CCS2",
+    target_connector: str | None = None,
+    supported_connectors: list[str] | None = None,
+    min_power_kw: float | None = None,
     distance_fn: Callable[[tuple[float, float], tuple[float, float]], float] | None = None,
+    road_tortuosity: float = 1.0,
 ) -> tuple[list[Station], list[Station], dict[str, Any]]:
-    """Greedily filter stations while strictly guaranteeing corridor feasibility.
+    """Heuristic range-preserving candidate charger filter.
 
-    Guarantees:
-        If a sequence of stations exists that allows the vehicle to complete the trip
-        without dropping below reserve_soc, this filter will NEVER produce an
-        infeasible filtered set.
+    Note on Feasibility:
+        This filter uses 1D spatial spacing based on flat-road consumption. On steep
+        hilly terrain, grade resistance increases consumption; true physical feasibility
+        must always be verified by the full clamped road-network simulation.
 
     Algorithm:
-        1. Drop stations without target_connector (e.g. CCS2).
-        2. Score all compatible stations and initially keep only those with score >= threshold.
-        3. Project stations onto the 1D path from source to destination.
-        4. Check corridor connectivity across all gaps:
-           - Gap 0: Source -> First kept station (energy <= E_start_effective)
-           - Gap i: Kept station i -> Kept station i+1 (energy <= E_effective)
-           - Gap Last: Last kept station -> Destination (energy <= E_effective)
-        5. Loop Reinstatement: If any gap exceeds effective range, find the highest-scoring
+        1. Drop stations without any compatible connector (matching any supported connector).
+        2. Optionally drop stations below min_power_kw if specified.
+        3. Score remaining stations and initially keep only those with score >= threshold.
+        4. Project stations onto the 1D path from source to destination.
+        5. Check corridor connectivity across all gaps:
+           - Gap 0: Source -> First kept station (distance <= max_start_range)
+           - Gap i: Kept station i -> Kept station i+1 (distance <= max_range)
+           - Gap Last: Last kept station -> Destination (distance <= max_range)
+        6. Loop Reinstatement: If any gap exceeds effective range, find the highest-scoring
            dropped station inside that gap and reinstate it. Repeat until all gaps are valid
            or no dropped station can bridge the gap.
 
     Complexity:
-        Time: O(|stations| * log |stations|) for sorting and greedy interval checks.
+        Time: O(|stations| * log |stations|) for sorting, plus greedy interval checks.
         Space: O(|stations|)
 
     Args:
@@ -83,33 +88,61 @@ def filter_stations_greedy(
         start_soc: Initial battery fraction in [0, 1].
         reserve_soc: Safety reserve fraction in [0, 1].
         score_threshold: Initial cutoff score for candidates.
-        target_connector: Desired fast-charge plug standard.
+        target_connector: Optional single target connector (deprecated, use supported_connectors).
+        supported_connectors: Optional list of acceptable connectors; defaults to car.supported_connectors.
+        min_power_kw: Optional minimum charging power cutoff in kW.
         distance_fn: Optional custom distance function in meters.
+        road_tortuosity: Optional tortuosity ratio (>= 1.0) converting straight-line to road distance.
 
     Returns:
         Tuple of (kept_stations, dropped_stations, audit_metadata).
     """
     dist_calc = distance_fn or (lambda c1, c2: haversine_distance_m(c1[0], c1[1], c2[0], c2[1]))
 
+    # Resolve acceptable connectors: match ANY supported connector
+    if supported_connectors:
+        valid_connectors = set(supported_connectors)
+    elif target_connector:
+        valid_connectors = {target_connector}
+    elif car.supported_connectors:
+        valid_connectors = set(car.supported_connectors)
+    else:
+        valid_connectors = {"CCS2"}
+
     e_usable = car.usable_battery_kwh
     e_effective = e_usable * max(0.0, 1.0 - reserve_soc)
     e_start_effective = e_usable * max(0.0, start_soc - reserve_soc)
 
-    # Approximate max distance vehicle can travel on flat terrain with effective energy
-    # (used for 1D corridor projection gap verification)
+    # Approximate max distance vehicle can travel on flat terrain with effective energy,
+    # divided by road tortuosity factor to prevent straight-line underestimation of road distance.
     km_per_kwh = 1.0 / car.consumption_kwh_per_km
-    max_range_m = (e_effective * km_per_kwh) * 1000.0
-    max_start_range_m = (e_start_effective * km_per_kwh) * 1000.0
+    tortuosity = max(1.0, road_tortuosity)
+    max_range_m = ((e_effective * km_per_kwh) * 1000.0) / tortuosity
+    max_start_range_m = ((e_start_effective * km_per_kwh) * 1000.0) / tortuosity
 
-    # 1. Connector compatibility filter
+    # 1. Connector compatibility and power filter
     compatible_stations: list[Station] = []
     dropped_incompatible: list[Station] = []
+    dropped_power: list[Station] = []
 
     for st in stations:
-        if target_connector in st.connector_types:
-            compatible_stations.append(st)
-        else:
+        # Exclude unknown connector from routing unless setting allows it
+        if getattr(st, "connector_unknown", False) and not ALLOW_UNKNOWN_CONNECTORS:
             dropped_incompatible.append(st)
+            continue
+
+        # Match ANY supported connector
+        has_plug = any(c in valid_connectors for c in st.connector_types)
+        if not has_plug:
+            dropped_incompatible.append(st)
+            continue
+
+        # Optional minimum-power filter
+        if min_power_kw is not None and st.max_kw < min_power_kw:
+            dropped_power.append(st)
+            continue
+
+        compatible_stations.append(st)
 
     # If entire trip can be completed on single charge from start without any charging:
     direct_trip_dist_m = dist_calc(source_coord, destination_coord)

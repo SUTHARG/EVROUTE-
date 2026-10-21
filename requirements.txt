@@ -1,0 +1,9 @@
+# Core runtime dependencies for Route.ev
+pydantic>=2.0.0
+fastapi>=0.100.0
+uvicorn>=0.20.0
+requests>=2.28.0
+networkx>=3.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+python-dotenv>=1.0.0

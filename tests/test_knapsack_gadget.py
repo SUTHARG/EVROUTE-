@@ -110,9 +110,16 @@ def build_knapsack_gadget_corridor(
             RoadEdge(u=b_i, v=v_node, length_m=1000.0, time_s=1.5 * 60.0, energy_kwh=0.2)
         )
 
-        # Station A_i: Fast DC, low amenity (Discomfort = 5 + w_i, Time = 20)
-        p_a = K_TAPER / T0
-        amenity_a = max(0.0, min(1.0, 1.0 - (w_i / 20.0)))
+        # Station A_i: Tuned DC, lower amenity (takes item i)
+        # Long-dwell regime (> 40 min): T_A = 50 + w_i + 2 * v_i
+        t_a = 50.0 + w_i + 2.0 * v_i
+        t_b = t_a + v_i
+        a_b = 1.0
+        a_a = 1.0 - (w_i + 1.5 * v_i) / t_a
+
+        p_a = K_TAPER / t_a
+        p_b = K_TAPER / t_b
+
         st_a_id = f"st_A_{i}"
         stations[st_a_id] = Station(
             id=st_a_id,
@@ -122,13 +129,12 @@ def build_knapsack_gadget_corridor(
             road_node_id=a_i,
             max_kw=p_a,
             connector_types=["CCS2"],
-            amenity_score=amenity_a,
+            amenity_score=a_a,
             reliability=1.0,
             is_reliability_simulated=True,
+            source="synthetic",
         )
 
-        # Station B_i: Tuned DC, luxury lounge (Discomfort = 5, Time = 20 + v_i)
-        p_b = K_TAPER / (T0 + v_i)
         st_b_id = f"st_B_{i}"
         stations[st_b_id] = Station(
             id=st_b_id,
@@ -138,9 +144,10 @@ def build_knapsack_gadget_corridor(
             road_node_id=b_i,
             max_kw=p_b,
             connector_types=["CCS2"],
-            amenity_score=1.0,  # 1 - A = 0
+            amenity_score=a_b,
             reliability=1.0,
             is_reliability_simulated=True,
+            source="synthetic",
         )
 
         prev_node = v_node
@@ -195,6 +202,9 @@ def solve_knapsack_brute_force(
     """
     n = len(weights)
     t_drive_total = (n + 1) * LEG_DRIVE_MIN
+    base_t_charge = sum(50.0 + w + 2.0 * v for w, v in zip(weights, values))
+    base_discomfort = sum(1.5 * (50.0 + w + 3.0 * v) - 55.0 for w, v in zip(weights, values))
+
     best_j = float("inf")
     solutions: list[tuple[float, float, list[int]]] = []
 
@@ -203,8 +213,8 @@ def solve_knapsack_brute_force(
         w_sum = sum(w for take, w in zip(subset, weights) if take == 1)
         v_unselected = sum(v for take, v in zip(subset, values) if take == 0)
 
-        t_total = t_drive_total + n * T0 + v_unselected
-        d_total = n * D0 + w_sum
+        t_total = t_drive_total + base_t_charge + v_unselected
+        d_total = base_discomfort + w_sum
         cost_j = t_total + lambda_val * d_total
 
         if cost_j < best_j - 1e-6:
@@ -218,34 +228,44 @@ def solve_knapsack_brute_force(
 
 def test_gadget_energy_decoupling_and_taper():
     """Verify that gadget physical charging taper and energy balance match theory."""
-    weights = [5, 10]
-    values = [4, 8]
+    weights = [250, 400]
+    values = [120, 350]
     snapshot, car, _trip = build_knapsack_gadget_corridor(weights, values)
 
     st_map = {st.id: st for st in snapshot.stations}
-    st_a1 = st_map["st_A_1"]
-    st_b1 = st_map["st_B_1"]
+    for i in range(1, len(weights) + 1):
+        st_a = st_map[f"st_A_{i}"]
+        st_b = st_map[f"st_B_{i}"]
 
-    # Recharging from reserve (0.25) to 1.00:
-    t_a1 = charge_time_min(RESERVE_SOC, 1.0, st_a1.max_kw, car)
-    t_b1 = charge_time_min(RESERVE_SOC, 1.0, st_b1.max_kw, car)
+        # Recharging from reserve (0.25) to 1.00:
+        t_a = charge_time_min(RESERVE_SOC, 1.0, st_a.max_kw, car)
+        t_b = charge_time_min(RESERVE_SOC, 1.0, st_b.max_kw, car)
 
-    assert abs(t_a1 - 20.0) < 1e-3, f"Branch A charge time {t_a1} != 20.0"
-    assert abs(t_b1 - (20.0 + values[0])) < 1e-3, f"Branch B charge time {t_b1} != {20.0 + values[0]}"
+        expected_ta = 50.0 + weights[i - 1] + 2.0 * values[i - 1]
+        expected_tb = expected_ta + values[i - 1]
+
+        assert abs(t_a - expected_ta) < 1e-3, f"Branch A charge time {t_a} != {expected_ta}"
+        assert abs(t_b - expected_tb) < 1e-3, f"Branch B charge time {t_b} != {expected_tb}"
+        assert abs((t_b - t_a) - values[i - 1]) < 1e-3
+
+        d_a = compute_dwell_discomfort(t_a, st_a.amenity_score, True, RESERVE_SOC, 0.35)
+        d_b = compute_dwell_discomfort(t_b, st_b.amenity_score, True, RESERVE_SOC, 0.35)
+        assert abs((d_a - d_b) - weights[i - 1]) < 1e-3
 
 
 @pytest.mark.parametrize("seed", [42, 101, 777, 999])
 def test_knapsack_gadget_matches_oracle(seed: int):
-    """Test on random small Knapsack instances that multi-route oracle matches Knapsack optimum."""
+    """Test on random Knapsack instances with weights/values up to ~1000 against brute-force and oracle."""
     rng = random.Random(seed)
     n = 3
-    weights = [rng.randint(2, 12) for _ in range(n)]
-    values = [rng.randint(2, 12) for _ in range(n)]
+    # Arbitrary integer weights and values up to ~1000
+    weights = [rng.randint(20, 1000) for _ in range(n)]
+    values = [rng.randint(20, 1000) for _ in range(n)]
 
     snapshot, car, trip = build_knapsack_gadget_corridor(weights, values)
 
     # Test across multiple lambda values (weights of comfort vs time)
-    for lambda_val in [0.23, 0.47, 1.05, 1.83]:
+    for lambda_val in [0.23, 0.50, 1.00, 2.15]:
         best_j, opt_solutions = solve_knapsack_brute_force(weights, values, lambda_val)
 
         oracle_res = solve_multi_route_oracle(snapshot, car, trip, lambda_val=lambda_val)
@@ -272,8 +292,8 @@ def test_knapsack_gadget_matches_oracle(seed: int):
 
 def test_knapsack_gadget_exhaustive_bijection():
     """Verify that every 2^n Knapsack subset maps 1-to-1 to an EV route with identical T and D."""
-    weights = [6, 4, 7]
-    values = [8, 5, 9]
+    weights = [350, 120, 680]
+    values = [420, 210, 150]
     n = len(weights)
 
     snapshot, car, _trip = build_knapsack_gadget_corridor(weights, values)
@@ -283,14 +303,16 @@ def test_knapsack_gadget_exhaustive_bijection():
     st_map = {st.id: st for st in snapshot.stations}
 
     t_drive_total = (n + 1) * LEG_DRIVE_MIN
+    base_t_charge = sum(50.0 + w + 2.0 * v for w, v in zip(weights, values))
+    base_discomfort = sum(1.5 * (50.0 + w + 3.0 * v) - 55.0 for w, v in zip(weights, values))
 
     for subset_tuple in itertools.product([0, 1], repeat=n):
         subset = list(subset_tuple)  # 1 for A (take), 0 for B (leave)
         w_sum = sum(w for take, w in zip(subset, weights) if take == 1)
         v_unselected = sum(v for take, v in zip(subset, values) if take == 0)
 
-        expected_time = t_drive_total + n * T0 + v_unselected
-        expected_discomfort = n * D0 + w_sum
+        expected_time = t_drive_total + base_t_charge + v_unselected
+        expected_discomfort = base_discomfort + w_sum
 
         # Construct the physical path for this subset
         path_nodes = [0]

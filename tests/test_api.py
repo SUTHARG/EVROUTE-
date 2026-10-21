@@ -152,3 +152,104 @@ def test_invalid_requests():
         },
     )
     assert resp_bad_soc.status_code == 422
+
+
+def test_downhill_regen_before_stop_explicit_distance():
+    """Verify that a route with downhill regen before a charging stop does not confuse regen with charging.
+
+    The planner must return explicit stop['route_distance_km'] matching the known station km,
+    and profile points must distinguish 'regen' events from 'charge' events without inferring stops
+    from SoC jumps (since downhill regen also increases SoC).
+    """
+    from core.models import PRESET_CARS, CorridorSnapshot, RoadEdge, RoadNode, Station, Trip
+    from core.planner import EVPlanner
+
+    # Create a corridor:
+    # Node 0 (km 0, elev 800m) -> Node 1 (km 20, elev 100m, steep downhill, regen increases SoC)
+    # Station S1 located exactly at Node 1 (km 20.0)
+    # Node 1 -> Node 2 (km 60, elev 700m, steep uphill requiring charge at S1)
+    nodes = {
+        0: RoadNode(id=0, lat=18.0, lon=73.0, elevation_m=800.0),
+        1: RoadNode(id=1, lat=18.1, lon=73.1, elevation_m=100.0),
+        2: RoadNode(id=2, lat=18.3, lon=73.3, elevation_m=700.0),
+    }
+    edges = [
+        RoadEdge(u=0, v=1, length_m=20000.0, time_s=1200.0, elevation_gain_m=-700.0, energy_kwh=-2.5),
+        RoadEdge(u=1, v=2, length_m=40000.0, time_s=2400.0, elevation_gain_m=600.0, energy_kwh=10.0),
+    ]
+    stations = [
+        Station(
+            id="st_downhill_20km",
+            name="Known Km 20 Charger",
+            operator="AuditCharger",
+            lat=18.1,
+            lon=73.1,
+            max_kw=120.0,
+            road_node_id=1,
+            detour_distance_m=0.0,
+            detour_time_s=0.0,
+            detour_energy_kwh=0.0,
+            source="synthetic",
+            connector_types=["CCS2"],
+        )
+    ]
+    snap = CorridorSnapshot(
+        id="regen_downhill_audit",
+        source_name="Origin",
+        destination_name="Destination",
+        created_at="2026-10-18T00:00:00Z",
+        nodes=nodes,
+        edges=edges,
+        stations=stations,
+        source_node_id=0,
+        destination_node_id=2,
+    )
+    car = PRESET_CARS["tata_tiago_ev"].model_copy()
+    car.battery_kwh = 20.0
+
+    trip = Trip(
+        snapshot_id="regen_downhill_audit",
+        source_id="source",
+        destination_id="dest",
+        start_soc=0.20,
+        reserve_soc=0.10,
+        stop_threshold_soc=0.25,
+        comfort_weight_lambda=1.0,
+        K=20,
+    )
+
+    planner = EVPlanner()
+    plan = planner.plan(
+        snapshot=snap,
+        car=car,
+        trip=trip,
+        enable_filter=False,
+    )
+
+    assert plan.feasible is True
+    assert len(plan.stops) == 1
+    stop = plan.stops[0]
+
+    # Explicit stop distance must equal exactly 20.0 km
+    assert abs(stop.route_distance_km - 20.0) < 1e-3, (
+        f"Expected stop.route_distance_km to be exactly 20.0 km, got {stop.route_distance_km}"
+    )
+
+    # In the profile, verify that downhill segment produced regen points AND a separate charge point
+    events = [pt.event for pt in plan.route_soc_profile if pt.event is not None]
+    assert "regen" in events, f"Expected downhill segment to have 'regen' event, got events: {set(events)}"
+    assert "charge" in events, f"Expected charging stop to have 'charge' event, got events: {set(events)}"
+
+    # Crucial assertion: A naive detector counting ANY SoC jump > 0.005 would see at least 2 increases
+    # (downhill regen + charging stop), which fails if stops are inferred from SoC jumps alone!
+    soc_increases = [
+        (curr.distance_km, prev.soc, curr.soc)
+        for prev, curr in zip(plan.route_soc_profile[:-1], plan.route_soc_profile[1:])
+        if curr.soc > prev.soc + 0.001
+    ]
+    assert len(soc_increases) >= 2, (
+        "Downhill regen plus charging must produce >= 2 upward SoC increases, proving naive jump detection is ambiguous"
+    )
+
+
+

@@ -13,23 +13,113 @@ NOMINATIM_URL: str = "https://nominatim.openstreetmap.org/search"
 USER_AGENT: str = "RouteEV-TripPlanner/1.0 (academic-dsa-project)"
 RATE_LIMIT_DELAY_S: float = 1.0
 
-# Offline fallback coordinates for standard Indian cities to support hermetic execution
-FALLBACK_COORDINATES: dict[str, tuple[float, float]] = {
-    "mumbai": (18.9388, 72.8354),
-    "pune": (18.5204, 73.8567),
-    "bengaluru": (12.9716, 77.5946),
-    "bangalore": (12.9716, 77.5946),
-    "hyderabad": (17.3850, 78.4867),
-    "chennai": (13.0827, 80.2707),
-    "delhi": (28.6139, 77.2090),
-    "new delhi": (28.6139, 77.2090),
-    "lonavala": (18.7546, 73.4062),
-    "khandala": (18.7618, 73.3752),
-    "panvel": (18.9894, 73.1175),
-    "thane": (19.2183, 72.9781),
+# Offline fallback coordinates for standard Indian cities to support hermetic execution and tests
+FALLBACK_COORDINATES: dict[str, tuple[float, float, str]] = {
+    "mumbai": (18.9388, 72.8354, "Mumbai, Maharashtra, India"),
+    "pune": (18.5204, 73.8567, "Pune, Maharashtra, India"),
+    "delhi": (28.6139, 77.2090, "Delhi, National Capital Territory of Delhi, India"),
+    "new delhi": (28.6139, 77.2090, "New Delhi, Delhi, India"),
+    "agra": (27.1767, 78.0081, "Agra, Uttar Pradesh, India"),
+    "bengaluru": (12.9716, 77.5946, "Bengaluru, Karnataka, India"),
+    "bangalore": (12.9716, 77.5946, "Bengaluru, Karnataka, India"),
+    "hyderabad": (17.3850, 78.4867, "Hyderabad, Telangana, India"),
+    "chennai": (13.0827, 80.2707, "Chennai, Tamil Nadu, India"),
+    "jaipur": (26.9124, 75.7873, "Jaipur, Rajasthan, India"),
+    "ahmedabad": (23.0225, 72.5714, "Ahmedabad, Gujarat, India"),
+    "chandigarh": (30.7333, 76.7794, "Chandigarh, India"),
+    "lucknow": (26.8467, 80.9462, "Lucknow, Uttar Pradesh, India"),
+    "lonavala": (18.7546, 73.4062, "Lonavala, Pune, Maharashtra, India"),
+    "khandala": (18.7618, 73.3752, "Khandala, Pune, Maharashtra, India"),
+    "panvel": (18.9894, 73.1175, "Panvel, Raigad, Maharashtra, India"),
+    "thane": (19.2183, 72.9781, "Thane, Maharashtra, India"),
+    "navi mumbai": (19.0330, 73.0297, "Navi Mumbai, Maharashtra, India"),
 }
 
 _last_request_time: float = 0.0
+
+
+def search_geocode(
+    query: str,
+    limit: int = 5,
+    countrycodes: str = "in",
+    allow_network: bool = True,
+    cache: DiskCache | None = None,
+) -> list[dict[str, Any]]:
+    """Search for location candidates using OpenStreetMap Nominatim or offline fallbacks.
+
+    Rate-limited to 1 request/second and cached to disk.
+
+    Args:
+        query: Search string entered by user.
+        limit: Maximum number of candidates to return (up to 5).
+        countrycodes: Country code filter (default 'in').
+        allow_network: Allow live HTTP requests if not cached.
+        cache: Optional DiskCache instance.
+
+    Returns:
+        List of candidate dictionaries: [{"label": ..., "lat": ..., "lon": ...}, ...]
+    """
+    global _last_request_time
+    clean_query = query.strip()
+    if not clean_query:
+        return []
+
+    cache_key = f"search_{clean_query.lower()}_lim={limit}_cc={countrycodes}"
+    disk_cache = cache or DiskCache("geocode_search")
+
+    # 1. Check disk cache
+    cached = disk_cache.get(cache_key)
+    if cached and isinstance(cached, list):
+        return cached
+
+    # 2. Check offline candidates if network is disabled
+    offline_candidates: list[dict[str, Any]] = []
+    q_lower = clean_query.lower()
+    for name, (lat, lon, label) in FALLBACK_COORDINATES.items():
+        if q_lower in name or name in q_lower:
+            offline_candidates.append({"label": label, "lat": lat, "lon": lon})
+            if len(offline_candidates) >= limit:
+                break
+
+    if not allow_network:
+        return offline_candidates
+
+    # 3. Rate-limited Nominatim query
+    elapsed = time.time() - _last_request_time
+    if elapsed < RATE_LIMIT_DELAY_S:
+        time.sleep(RATE_LIMIT_DELAY_S - elapsed)
+
+    headers = {"User-Agent": USER_AGENT}
+    params: dict[str, Any] = {
+        "q": clean_query,
+        "format": "json",
+        "limit": limit,
+    }
+    if countrycodes:
+        params["countrycodes"] = countrycodes
+
+    try:
+        response = requests.get(NOMINATIM_URL, params=params, headers=headers, timeout=10)
+        _last_request_time = time.time()
+        response.raise_for_status()
+        data = response.json()
+        results: list[dict[str, Any]] = []
+        if isinstance(data, list):
+            for item in data[:limit]:
+                results.append({
+                    "label": item.get("display_name", clean_query),
+                    "lat": float(item["lat"]),
+                    "lon": float(item["lon"]),
+                })
+
+        if results:
+            disk_cache.set(cache_key, results)
+            return results
+        # If no results from Nominatim, fallback to offline candidates if any
+        return offline_candidates
+    except Exception as exc:  # noqa: BLE001
+        print(f"[!] Nominatim search failed ({exc}), using offline candidates.")
+        return offline_candidates
 
 
 def geocode(
@@ -56,54 +146,11 @@ def geocode(
     Raises:
         ValueError: If location cannot be geocoded.
     """
-    global _last_request_time
     clean_query = place_name.strip()
-    cache_key = clean_query.lower()
-    disk_cache = cache or DiskCache("geocode")
+    candidates = search_geocode(clean_query, limit=1, allow_network=allow_network, cache=cache)
+    if candidates:
+        first = candidates[0]
+        return first["lat"], first["lon"], first["label"]
 
-    # 1. Check disk cache
-    cached: dict[str, Any] | None = disk_cache.get(cache_key)
-    if cached:
-        return cached["lat"], cached["lon"], cached["display_name"]
+    raise ValueError(f"Geocoding failed for '{place_name}': location not found.")
 
-    # 2. Check offline dictionary
-    if cache_key in FALLBACK_COORDINATES:
-        lat, lon = FALLBACK_COORDINATES[cache_key]
-        display_name = f"{clean_query.title()}, India (Offline Fallback)"
-        disk_cache.set(cache_key, {"lat": lat, "lon": lon, "display_name": display_name})
-        return lat, lon, display_name
-
-    if not allow_network:
-        raise ValueError(
-            f"Location '{place_name}' not found in offline dictionary and network is disabled."
-        )
-
-    # 3. Rate-limited Nominatim query
-    elapsed = time.time() - _last_request_time
-    if elapsed < RATE_LIMIT_DELAY_S:
-        time.sleep(RATE_LIMIT_DELAY_S - elapsed)
-
-    headers = {"User-Agent": USER_AGENT}
-    params = {"q": clean_query, "format": "json", "limit": 1}
-
-    try:
-        response = requests.get(NOMINATIM_URL, params=params, headers=headers, timeout=10)
-        _last_request_time = time.time()
-        response.raise_for_status()
-        data = response.json()
-        if not data:
-            raise ValueError(f"Nominatim could not find location: '{place_name}'")
-
-        lat = float(data[0]["lat"])
-        lon = float(data[0]["lon"])
-        display_name = str(data[0].get("display_name", clean_query))
-
-        disk_cache.set(cache_key, {"lat": lat, "lon": lon, "display_name": display_name})
-        return lat, lon, display_name
-    except Exception as exc:
-        # If network failed, check if we have a substring match in offline coordinates
-        for known_city, (c_lat, c_lon) in FALLBACK_COORDINATES.items():
-            if known_city in cache_key:
-                display = f"{known_city.title()}, India (Offline Fallback)"
-                return c_lat, c_lon, display
-        raise ValueError(f"Geocoding failed for '{place_name}': {exc}") from exc

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 
-from core.models import Car
+from core.models import Car, Station
 
 ELBOW_SOC: float = 0.80
 
@@ -21,6 +21,7 @@ def charge_time_min(
     s_out: float,
     station_max_kw: float,
     car: Car,
+    mode: str = "dc",
 ) -> float:
     """Compute exact duration in minutes required to charge battery from s_in to s_out.
 
@@ -54,9 +55,16 @@ def charge_time_min(
     s_b = max(0.0, min(1.0, s_out))
 
     e_usable = car.usable_battery_kwh
-    p0 = min(station_max_kw, car.max_dc_kw)
+    is_ac = mode.lower() == "ac"
+    vehicle_limit_kw = car.max_ac_kw if is_ac else car.max_dc_kw
+    p0 = min(station_max_kw, vehicle_limit_kw) * (car.ac_charging_efficiency if is_ac else 1.0)
     if p0 <= 0.0:
         return float("inf")
+
+    # AC chargers deliver near-constant power through the vehicle's onboard
+    # charger; the DC fast-charge taper curve below applies only to DC.
+    if is_ac:
+        return (e_usable * (s_b - s_a) / p0) * 60.0
 
     # Case 1: Pure Constant Current (s_b <= 0.80)
     if s_b <= ELBOW_SOC:
@@ -84,6 +92,7 @@ def invert_charge_time_to_soc(
     target_dwell_min: float,
     station_max_kw: float,
     car: Car,
+    mode: str = "dc",
 ) -> float:
     """Compute departure SoC achieved after exactly target_dwell_min minutes of charging.
 
@@ -106,8 +115,15 @@ def invert_charge_time_to_soc(
         return s_in
 
     e_usable = car.usable_battery_kwh
-    p0 = min(station_max_kw, car.max_dc_kw)
+    is_ac = mode.lower() == "ac"
+    vehicle_limit_kw = car.max_ac_kw if is_ac else car.max_dc_kw
+    p0 = min(station_max_kw, vehicle_limit_kw) * (car.ac_charging_efficiency if is_ac else 1.0)
+    if p0 <= 0.0:
+        return s_in
     target_hours = target_dwell_min / 60.0
+
+    if is_ac:
+        return min(1.0, max(s_in, s_in + (target_hours * p0) / e_usable))
 
     # Time needed to reach 0.80 from s_in
     if s_in < ELBOW_SOC:
@@ -138,6 +154,7 @@ def compute_dwell_window_soc_targets(
     station_max_kw: float,
     car: Car,
     K: int = 100,
+    mode: str = "dc",
 ) -> list[int]:
     """Compute floor and ceil discrete levels for 20-min and 40-min dwell sweet spot.
 
@@ -149,7 +166,7 @@ def compute_dwell_window_soc_targets(
     targets: set[int] = set()
 
     for dwell_m in (20.0, 40.0):
-        soc_val = invert_charge_time_to_soc(s_in, dwell_m, station_max_kw, car)
+        soc_val = invert_charge_time_to_soc(s_in, dwell_m, station_max_kw, car, mode)
         lvl_floor = math.floor(soc_val * K)
         lvl_ceil = math.ceil(soc_val * K)
         in_lvl = math.floor(s_in * K)
@@ -160,3 +177,30 @@ def compute_dwell_window_soc_targets(
             targets.add(min(K, lvl_ceil))
 
     return sorted(targets)
+
+
+def station_charging_options(station: Station, car: Car) -> list[tuple[str, float]]:
+    """Return usable (mode, station power) pairs for known compatible plugs."""
+    connectors = {name.strip().lower() for name in station.connector_types}
+    supported = {name.strip().lower() for name in car.supported_connectors}
+    compatible = connectors & supported
+    options: list[tuple[str, float]] = []
+
+    has_dc = any("ccs" in c or "chademo" in c for c in compatible)
+    has_ac = any("type 2" in c or "type2" in c for c in compatible)
+    if has_dc:
+        power = station.max_dc_kw
+        if power is None:
+            power = 50.0 if station.power_assumed else station.max_kw
+        if power > 0:
+            options.append(("dc", power))
+    if has_ac:
+        power = station.max_ac_kw
+        if power is None:
+            # A generic assumed rating, or a mixed-site rating taken from its
+            # DC connector, must never be treated as an AC rating. Use a
+            # conservative single-phase fallback for AC plugs in those cases.
+            power = 7.2 if station.power_assumed or has_dc else station.max_kw
+        if power > 0:
+            options.append(("ac", power))
+    return options

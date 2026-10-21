@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -65,6 +65,7 @@ def sample_elevations(
     coords: list[tuple[float, float]],  # [(lat, lon), ...]
     allow_network: bool = True,
     cache: DiskCache | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[float]:
     """Sample elevations for a sequence of (lat, lon) coordinates via batched queries.
 
@@ -102,7 +103,9 @@ def sample_elevations(
         return results
 
     # 2. Batch query missing coordinates in chunks of MAX_BATCH_SIZE
-    for chunk_start in range(0, len(missing_indices), MAX_BATCH_SIZE):
+    chunks = range(0, len(missing_indices), MAX_BATCH_SIZE)
+    total_chunks = len(chunks)
+    for chunk_number, chunk_start in enumerate(chunks, start=1):
         chunk_indices = missing_indices[chunk_start : chunk_start + MAX_BATCH_SIZE]
         locations_str = "|".join(
             f"{coords[i][0]:.5f},{coords[i][1]:.5f}" for i in chunk_indices
@@ -131,5 +134,8 @@ def sample_elevations(
         except (requests.RequestException, ValueError, KeyError):
             # On network failure or malformed payload, retain default heights
             continue
+        finally:
+            if progress_callback:
+                progress_callback(chunk_number, total_chunks)
 
     return results

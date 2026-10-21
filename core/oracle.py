@@ -10,7 +10,7 @@ from __future__ import annotations
 import itertools
 from typing import Any
 
-from core.charging import charge_time_min
+from core.charging import charge_time_min, station_charging_options
 from core.comfort import compute_dwell_discomfort
 from core.energy import discretize_soc_level, level_to_soc, simulate_path_soc
 from core.models import Car, CorridorSnapshot, RoadEdge, Station, Trip
@@ -176,34 +176,36 @@ def solve_multi_route_oracle(
 
                     for s_dep_lvl in range(arr_lvl + 1, K + 1):
                         s_out = level_to_soc(s_dep_lvl, K)
-                        t_chg = charge_time_min(s_in, s_out, st.max_kw, car)
-                        d_chg = compute_dwell_discomfort(
-                            dwell_min=t_chg,
-                            amenity_score=st.amenity_score,
-                            is_real_charge=True,
-                            arrival_soc=s_in,
-                            stop_threshold_soc=trip.stop_threshold_soc,
-                            gamma=trip.gamma,
-                        )
+                        for mode, power_kw in station_charging_options(st, car):
+                            t_chg = charge_time_min(s_in, s_out, power_kw, car, mode=mode)
+                            d_chg = compute_dwell_discomfort(
+                                dwell_min=t_chg,
+                                amenity_score=st.amenity_score,
+                                is_real_charge=True,
+                                arrival_soc=s_in,
+                                stop_threshold_soc=trip.stop_threshold_soc,
+                                gamma=trip.gamma,
+                            )
 
-                        stop_record = {
-                            "station_id": st.id,
-                            "arrival_soc": s_in,
-                            "departure_soc": s_out,
-                            "charge_time_min": t_chg,
-                        }
+                            stop_record = {
+                                "station_id": st.id,
+                                "arrival_soc": s_in,
+                                "departure_soc": s_out,
+                                "charge_time_min": t_chg,
+                                "charging_mode": mode,
+                            }
 
-                        search_levels(
-                            stop_idx + 1,
-                            s_dep_lvl,
-                            accum_chg_time + t_chg,
-                            accum_discomfort + d_chg,
-                            current_stops + [stop_record],
-                            route=route,
-                            segments=segments,
-                            drive_time=drive_time,
-                            stops_list=stops_list,
-                        )
+                            search_levels(
+                                stop_idx + 1,
+                                s_dep_lvl,
+                                accum_chg_time + t_chg,
+                                accum_discomfort + d_chg,
+                                current_stops + [stop_record],
+                                route=route,
+                                segments=segments,
+                                drive_time=drive_time,
+                                stops_list=stops_list,
+                            )
 
                 search_levels(0, start_s_lvl, 0.0, 0.0, [])
 

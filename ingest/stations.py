@@ -68,19 +68,31 @@ class StationIngestionPolicy:
 
 
 def compute_data_provenance(stations: list[Station], metadata: dict[str, Any] | None = None) -> str:
-    """Compute data provenance classification: 'verified', 'manual_unverified', or 'synthetic'."""
-    if metadata and metadata.get("synthetic", False):
+    """Compute data provenance classification: 'verified', 'open_data_providers', 'manual_unverified', or 'synthetic'."""
+    if metadata and (metadata.get("synthetic", False) or metadata.get("data_provenance") == "synthetic"):
         return "synthetic"
 
     if not stations:
-        return "synthetic" if (metadata and metadata.get("synthetic", False)) else "manual_unverified"
+        return "synthetic" if (metadata and metadata.get("synthetic", False)) else "none"
 
-    sources = {st.source for st in stations}
+    sources = {st.source for st in stations if st.source}
     if any(s.startswith("synth") for s in sources):
         return "synthetic"
-    if all(s in {"verified", "osm", "ocm"} for s in sources):
+
+    # Project verification policy: verified applies ONLY when verified=True from official checked CSV / ground truth
+    has_verified = any(
+        getattr(st, "verified", False) and getattr(st, "source", "") in {"verified", "verified_manual", "manual"}
+        for st in stations
+    )
+    if has_verified:
         return "verified"
+
+    # Distinguish live open data providers (OCM, OSM, Google Places) from unverified manual data
+    if any(s in {"ocm", "osm", "google_places", "ocm_snapshot"} for s in sources):
+        return "open_data_providers"
+
     return "manual_unverified"
+
 
 
 def load_curated_stations(csv_path: str | Path | None = None) -> list[Station]:
@@ -90,7 +102,7 @@ def load_curated_stations(csv_path: str | Path | None = None) -> list[Station]:
     and data_provenance is marked 'manual_unverified'.
     """
     if csv_path is None:
-        csv_path = Path("data/stations/curated_mumbai_pune_chargers.csv")
+        csv_path = Path("tests/fixtures/curated_mumbai_pune_chargers.csv")
     path = Path(csv_path)
     if not path.exists():
         return []
@@ -167,6 +179,7 @@ def load_user_verified_csv(csv_path: str | Path) -> list[Station]:
                 source="verified",
                 source_url=row["source_url"].strip(),
                 checked_on=row["checked_on"].strip(),
+                verified=True,
             )
             stations.append(st)
 
@@ -283,7 +296,10 @@ def fetch_overpass_stations(
         else:
             sample_points = [((min_lat + max_lat) / 2.0, (min_lon + max_lon) / 2.0)]
 
-        ocm_headers = {"User-Agent": USER_AGENT}
+        ocm_headers = {
+            "User-Agent": USER_AGENT,
+            "X-API-Key": ocm_api_key,
+        }
         seen_ocm_ids = set()
 
         for s_lat, s_lon in sample_points:
@@ -303,8 +319,7 @@ def fetch_overpass_stations(
                             "longitude": s_lon,
                             "distance": 10,
                             "distanceunit": "KM",
-                            "maxresults": 50,
-                            "key": ocm_api_key,
+                            "maxresults": 100,
                         },
                         headers=ocm_headers,
                         timeout=15,
@@ -331,18 +346,61 @@ def fetch_overpass_stations(
 
                 op_info = ocm_item.get("OperatorInfo") or {}
                 op_title = op_info.get("Title") or "OpenChargeMap Network"
+
+                # Parse real PowerKW and ConnectionType from Connections array
+                connections = ocm_item.get("Connections") or []
+                max_kw = 0.0
+                connectors: list[str] = []
+                power_assumed = False
+                connector_assumed = False
+
+                if isinstance(connections, list) and len(connections) > 0:
+                    for conn in connections:
+                        p_kw = conn.get("PowerKW")
+                        if p_kw is not None and isinstance(p_kw, (int, float)) and p_kw > 0:
+                            max_kw = max(max_kw, float(p_kw))
+
+                        conn_type = conn.get("ConnectionType") or {}
+                        c_title = (conn_type.get("Title") or conn_type.get("FormalName") or "").lower()
+                        if "ccs" in c_title or "combo" in c_title or "type 2 combo" in c_title:
+                            if "CCS2" not in connectors:
+                                connectors.append("CCS2")
+                        elif "type 2" in c_title or "type2" in c_title:
+                            if "Type 2" not in connectors:
+                                connectors.append("Type 2")
+                        elif "chademo" in c_title and "CHAdeMO" not in connectors:
+                            connectors.append("CHAdeMO")
+
+                if max_kw <= 0.0:
+                    max_kw = policy.assume_missing_power_kw if policy.assume_missing_power_kw is not None else 50.0
+                    power_assumed = True
+                    audit["assumed_power"] += 1
+
+                if not connectors:
+                    if policy.assume_missing_connector_as_ccs2:
+                        connectors = [policy.default_connector]
+                        connector_assumed = True
+                        audit["assumed_connector"] += 1
+                    else:
+                        audit["dropped_connector"] += 1
+                        continue
+
                 station = Station(
                     id=f"ocm_{poi_id}",
                     name=addr.get("Title", f"OCM Charger {poi_id}"),
                     lat=float(lat_f),
                     lon=float(lon_f),
                     operator=op_title,
-                    max_kw=60.0,
-                    connector_types=["CCS2"],
+                    max_kw=max_kw,
+                    connector_types=connectors,
                     reliability=simulate_station_reliability(op_title, f"ocm_{poi_id}"),
                     is_reliability_simulated=True,
                     amenities={},
                     amenity_score=0.0,
+                    power_assumed=power_assumed,
+                    connector_assumed=connector_assumed,
+                    amenity_known=False,
+                    spur_estimated=True,
                     source="ocm",
                 )
                 stations.append(station)
@@ -438,19 +496,69 @@ def fetch_overpass_stations(
             amenity_score=0.0,
             power_assumed=power_assumed,
             connector_assumed=connector_assumed,
+            amenity_known=False,
+            spur_estimated=True,
             source="osm",
         )
         stations.append(station)
         audit["kept"] += 1
         audit["count_by_source"]["osm"] += 1
 
-    # 3. Curated verified dataset fallback when live API queries return 0 results
+    # 3. Fallback when live API queries return 0 results
     if len(stations) == 0:
         curated = load_curated_stations(curated_csv)
-        for st in curated:
-            stations.append(st)
-            audit["kept"] += 1
-            audit["count_by_source"][st.source] = audit["count_by_source"].get(st.source, 0) + 1
+        matching_curated = [
+            st for st in curated
+            if (min_lat - 0.2 <= st.lat <= max_lat + 0.2 and min_lon - 0.2 <= st.lon <= max_lon + 0.2)
+        ]
+        if matching_curated:
+            for st in matching_curated:
+                stations.append(st)
+                audit["kept"] += 1
+                audit["count_by_source"][st.source] = audit["count_by_source"].get(st.source, 0) + 1
+        elif route_coords and len(route_coords) >= 10:
+            # Generate corridor charging stations along the road trajectory
+            total_dist_m = sum(
+                haversine_distance_m(route_coords[i][0], route_coords[i][1], route_coords[i + 1][0], route_coords[i + 1][1])
+                for i in range(len(route_coords) - 1)
+            )
+            step_m = 45_000.0  # every ~45 km
+            num_stops = max(2, int(total_dist_m / step_m))
+            target_step = total_dist_m / (num_stops + 1)
+
+            curr_acc = 0.0
+            next_target = target_step
+            st_idx = 1
+            for i in range(len(route_coords) - 1):
+                d = haversine_distance_m(route_coords[i][0], route_coords[i][1], route_coords[i + 1][0], route_coords[i + 1][1])
+                curr_acc += d
+                if curr_acc >= next_target and st_idx <= num_stops:
+                    lat_c, lon_c = route_coords[i]
+                    st_id = f"synth_corridor_stat_{st_idx}"
+                    op = "Tata Power" if st_idx % 2 == 1 else "Jio-bp pulse"
+                    st = Station(
+                        id=st_id,
+                        name=f"{op} - Highway Stop {st_idx}",
+                        lat=round(lat_c + (0.0005 if st_idx % 2 == 0 else -0.0005), 5),
+                        lon=round(lon_c + (0.0005 if st_idx % 2 == 0 else -0.0005), 5),
+                        operator=op,
+                        max_kw=60.0 if st_idx % 2 == 1 else 120.0,
+                        connector_types=["CCS2"],
+                        reliability=simulate_station_reliability(op, st_id),
+                        is_reliability_simulated=True,
+                        amenities={"restaurant": 2, "cafe": 1, "toilets": 1, "fuel": 1},
+                        amenity_score=0.85,
+                        power_assumed=False,
+                        connector_assumed=False,
+                        amenity_known=False,
+                        spur_estimated=True,
+                        source="synthetic",
+                    )
+                    stations.append(st)
+                    audit["kept"] += 1
+                    audit["count_by_source"]["synthetic"] = audit["count_by_source"].get("synthetic", 0) + 1
+                    next_target += target_step
+                    st_idx += 1
 
     audit["data_provenance"] = compute_data_provenance(stations)
     return stations, audit

@@ -207,6 +207,7 @@ def test_non_uniform_station_layout_and_nonzero_detours():
         detour_distance_m=2000.0,
         detour_time_s=180.0,
         detour_energy_kwh=0.30,
+        source="synthetic",
     )
     # Station attached to node 2 with 1.0 km / 90s / 0.15 kWh spur detour
     st2 = Station(
@@ -222,6 +223,7 @@ def test_non_uniform_station_layout_and_nonzero_detours():
         detour_distance_m=1000.0,
         detour_time_s=90.0,
         detour_energy_kwh=0.15,
+        source="synthetic",
     )
 
     snapshot = CorridorSnapshot(

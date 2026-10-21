@@ -25,8 +25,13 @@ python -m venv .venv
 # Linux / macOS:
 source .venv/bin/activate
 
-# Install core dependencies
+# Install core runtime dependencies
 pip install -r requirements.txt
+
+# Or install for development and testing:
+pip install -r requirements-dev.txt
+# Alternatively, editable install via pyproject.toml:
+pip install -e ".[dev]"
 ```
 
 ### Frontend Setup
@@ -35,6 +40,8 @@ Install frontend dependencies cleanly via `npm ci`:
 ```bash
 cd ui
 npm ci
+# Configure API URL if not using default http://127.0.0.1:8000
+# (Set NEXT_PUBLIC_API_BASE_URL in ui/.env)
 cd ..
 ```
 
@@ -49,7 +56,7 @@ Run the FastAPI backend on port 8000:
 python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-- API Base URL: `http://127.0.0.1:8000`
+- API Base URL: `http://127.0.0.1:8000` (Configurable via `NEXT_PUBLIC_API_BASE_URL`)
 - Interactive API Docs (Swagger UI): `http://127.0.0.1:8000/docs`
 - Health Check: `http://127.0.0.1:8000/health`
 - Preset Vehicles: `http://127.0.0.1:8000/cars`
@@ -62,7 +69,7 @@ cd ui
 npm run dev
 ```
 
-Open your browser at `http://localhost:3000`.
+Open your browser at `http://localhost:3000`. By default, the frontend connects to `http://127.0.0.1:8000` unless overridden by `NEXT_PUBLIC_API_BASE_URL`.
 
 To build the production web bundle:
 ```bash
@@ -144,3 +151,64 @@ ruff check .
 # Verify clean frontend build
 cd ui && npm ci && npm run build
 ```
+
+---
+
+## 7. Demo Build & Enabling Advanced Features
+
+### Demo Mode Overview
+The Demo Build provides a streamlined, presentation-ready experience:
+- **Live Station Data**: Sourced from Google Places API (New), Open Charge Map v3, local Open Charge Map snapshot (`data/ocm_snapshot/POI.json.gz`), and user-verified charging hubs (`data/stations/verified_stations.csv`), with 100m spatial deduplication and dual caching (24h static, 5m availability).
+- **Default 250 km Flat-Road Range**: All vehicle presets are calibrated to deliver exactly 250 km on flat highway cruise with a full usable battery (`DEFAULT_RANGE_KM = 250`).
+- **4-Wheeler Passenger EV Standard**: Enforces CCS2, Type 2 (AC), and CHAdeMO standards; excludes 2W/3W plugs; unlisted connectors appear as "connector unknown" and are excluded from routing.
+- **Hiding Advanced Features**: In demo mode (`NEXT_PUBLIC_DEMO_MODE=true`), the technical **Analysis** tab, Pareto multi-objective trade-off chart, raw algorithm state-expansion statistics, benchmark speedup cards, and Advanced Settings accordion are hidden from the UI to keep the interface uncluttered.
+
+### How to Enable Advanced Features & Full Developer Mode
+To reveal the Analysis tab, Pareto frontier explorer, algorithm performance counters, and Advanced Settings:
+
+1. Edit your `.env` file (or `ui/.env`):
+   ```env
+   # Set to false to reveal all advanced/research tools
+   NEXT_PUBLIC_DEMO_MODE=false
+
+   # Set to true to switch back to manufacturer-rated vehicle ranges
+   USE_CAR_SPECIFIC_RANGE=true
+   ```
+2. Restart or rebuild the Next.js frontend:
+   ```bash
+   cd ui
+   npm run build
+   npm run dev
+   ```
+
+---
+
+## 8. Open Charge Map Offline Snapshot Setup (No API Key Required)
+
+If you do not have an `OCM_API_KEY`, Route.ev supports an offline snapshot provider using the official Open Charge Map public export dataset.
+
+### File Details
+- **File Name**: `POI.json.gz` (or uncompressed `POI.json`)
+- **Source Repository**: [openchargemap/ocm-data on GitHub](https://github.com/openchargemap/ocm-data)
+- **Note on File Size**: Check the asset file size directly on GitHub releases before downloading (repository archive size varies with upstream releases).
+
+### Exact Steps for Manual Download
+1. Visit the Open Charge Map data repository releases:
+   - URL: `https://github.com/openchargemap/ocm-data`
+2. Download the latest exported archive (`poi.json.gz` or `POI.json.gz`).
+3. Place the downloaded file into the directory:
+   ```bash
+   data/ocm_snapshot/POI.json.gz
+   ```
+   *(This directory is ignored by Git in `.gitignore` to avoid committing large binary datasets).*
+4. The backend `OCMSnapshotProvider` will automatically detect the file, filter to India charging stations (filtered strictly by ISO country code `"IN"`), index them spatially in memory, and provide charging coverage along your corridor without requiring any API keys.
+
+---
+
+## 9. Data Attributions & Licensing
+
+- **OpenStreetMap**: Map data and road geometry &copy; [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), licensed under the Open Database License (ODbL).
+- **Open Charge Map**: Charging station data courtesy of [Open Charge Map](https://openchargemap.org) and its contributors, licensed under the Creative Commons Attribution 4.0 International License ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)). Note that individual points of interest provided to Open Charge Map by external data providers specify their own originator data provider and license per station.
+- **Open-Meteo**: Highway elevation profiles powered by the Open-Meteo Elevation API (CC BY 4.0).
+- **OSRM**: Road network routing powered by Project-OSRM.
+

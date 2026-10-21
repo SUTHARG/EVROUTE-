@@ -734,7 +734,8 @@
       },
       "amenity_score": 1.0,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_02",
@@ -755,7 +756,8 @@
       },
       "amenity_score": 0.85,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_03",
@@ -777,7 +779,8 @@
       },
       "amenity_score": 0.85,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_04",
@@ -798,7 +801,8 @@
       },
       "amenity_score": 0.45,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_05",
@@ -820,7 +824,8 @@
       },
       "amenity_score": 1.0,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_06",
@@ -841,7 +846,8 @@
       },
       "amenity_score": 0.45,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_07",
@@ -863,7 +869,8 @@
       },
       "amenity_score": 1.0,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_08",
@@ -884,7 +891,8 @@
       },
       "amenity_score": 0.85,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_09",
@@ -906,7 +914,8 @@
       },
       "amenity_score": 1.0,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_10",
@@ -927,7 +936,8 @@
       },
       "amenity_score": 0.45,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_11",
@@ -948,7 +958,8 @@
       },
       "amenity_score": 0.45,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_12",
@@ -969,7 +980,8 @@
       },
       "amenity_score": 0.45,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_13",
@@ -990,7 +1002,8 @@
       },
       "amenity_score": 0.85,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_14",
@@ -1012,7 +1025,8 @@
       },
       "amenity_score": 1.0,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     },
     {
       "id": "synth_stat_15",
@@ -1034,7 +1048,8 @@
       },
       "amenity_score": 0.85,
       "power_assumed": false,
-      "connector_assumed": false
+      "connector_assumed": false,
+      "source": "synthetic"
     }
   ],
   "metadata": {

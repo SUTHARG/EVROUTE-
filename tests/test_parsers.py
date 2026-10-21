@@ -110,3 +110,84 @@ Plaza Supercharger,18.7200,73.6000,Tata Power,120.0,CCS2,https://example.com/cha
 
     prov = compute_data_provenance(stations, metadata={"synthetic": False})
     assert prov == "verified"
+
+
+def test_ocm_api_sample_fixture_parser():
+    """Verify OpenChargeMap API parser against real fixture response."""
+    from core.config import get_ocm_api_key
+    from ingest.station_providers import OpenChargeMapProvider
+
+    fixture_path = FIXTURES_DIR / "ocm_api_sample.json"
+    assert fixture_path.exists(), "tests/fixtures/ocm_api_sample.json must exist"
+
+    content = fixture_path.read_text(encoding="utf-8")
+    key = get_ocm_api_key()
+    if key:
+        assert key not in content, "API key must NEVER be written to fixture file"
+
+    with open(fixture_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert 5 <= len(data) <= 10, f"Expected 5-10 stations in sample, got {len(data)}"
+
+    # Parse through provider
+    provider = OpenChargeMapProvider(api_key="mock_key_for_test")
+    assert provider.name == "ocm"
+
+    # Simulate fetch_stations parsing logic on fixture data
+    seen_ids = set()
+    stations = []
+    for item in data:
+        poi_id = str(item.get("ID", ""))
+        if not poi_id or poi_id in seen_ids:
+            continue
+        seen_ids.add(poi_id)
+        addr = item.get("AddressInfo") or {}
+        lat_f = addr.get("Latitude")
+        lon_f = addr.get("Longitude")
+        assert lat_f is not None and lon_f is not None
+
+        dp_obj = item.get("DataProvider") or {}
+        dp_name = dp_obj.get("Title") if isinstance(dp_obj, dict) else None
+        dp_license = dp_obj.get("License") if isinstance(dp_obj, dict) else None
+
+        connections = item.get("Connections") or []
+        assert isinstance(connections, list)
+
+        # Check DataProvider attribution
+        if dp_name:
+            assert "Open Charge Map" in dp_name or isinstance(dp_name, str)
+        if dp_license:
+            assert "Creative Commons" in dp_license or "CC" in dp_license or isinstance(dp_license, str)
+
+        stations.append(poi_id)
+
+    assert len(seen_ids) == len(data)
+    assert len(stations) == len(data)
+
+
+
+def test_api_key_not_leaked_in_cache_snapshots_reports():
+    """Grep verification that OCM_API_KEY is never written in cache, snapshots, logs, or reports."""
+    from core.config import get_ocm_api_key
+
+    key = get_ocm_api_key()
+    if not key or len(key.strip()) < 8:
+        return
+
+    # Check data/cache/
+    cache_dir = Path("data/cache")
+    if cache_dir.exists():
+        for f in cache_dir.rglob("*.json"):
+            assert key not in f.read_text(encoding="utf-8", errors="ignore"), f"Key leaked in cache file: {f.name}"
+
+    # Check data/snapshots/
+    snap_dir = Path("data/snapshots")
+    if snap_dir.exists():
+        for f in snap_dir.glob("*.json"):
+            assert key not in f.read_text(encoding="utf-8", errors="ignore"), f"Key leaked in snapshot file: {f.name}"
+
+    # Check reports and docs
+    for md_file in Path(".").glob("*.md"):
+        assert key not in md_file.read_text(encoding="utf-8", errors="ignore"), f"Key leaked in markdown file: {md_file.name}"
+

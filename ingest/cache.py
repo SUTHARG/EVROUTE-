@@ -29,10 +29,15 @@ class DiskCache:
         """Compute SHA-256 hex digest of cache key."""
         return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
-    def get(self, key: str) -> Any | None:
-        """Retrieve cached JSON payload if present, else None."""
+    def get(self, key: str, max_age_seconds: float | None = None) -> Any | None:
+        """Retrieve cached JSON payload if present and within max_age_seconds TTL, else None."""
         file_path = self.dir / f"{self._hash_key(key)}.json"
         if file_path.exists():
+            if max_age_seconds is not None:
+                import time
+                mtime = file_path.stat().st_mtime
+                if time.time() - mtime > max_age_seconds:
+                    return None
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     return json.load(f)
@@ -47,3 +52,15 @@ class DiskCache:
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(value, f, indent=2)
         temp_path.replace(file_path)
+
+    def clear(self) -> int:
+        """Clear all cached JSON entries in this namespace and return count of removed files."""
+        count = 0
+        for f in self.dir.glob("*.json"):
+            try:
+                f.unlink()
+                count += 1
+            except OSError:
+                pass
+        return count
+

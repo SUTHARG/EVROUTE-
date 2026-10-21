@@ -104,32 +104,42 @@ Given an arbitrary instance of 0/1 Knapsack, we construct an EV road corridor wi
      where:
      $$K_{\text{taper}} = 60 \cdot 12.0 \cdot \left(0.55 + \frac{\ln(10)}{4.50}\right) \approx 764.413615 \text{ kW}\cdot\text{min}$$
 
-6. **Parallel Branch Construction Using Exact Model Formulas**:
-   We set charger powers and station amenities on the two branches at stage $i$ as follows:
-   - **Branch A (Station $A_i$ — Corresponds to $i \in S$, "Take Item $i$")**:
-     - Charger Power: Set to $P(A_i) = \frac{K_{\text{taper}}}{20.0} \approx 38.22068$ kW.
-       $$\implies t_{\text{charge}}(A_i) = \frac{K_{\text{taper}}}{P(A_i)} = 20.0 \text{ min} = t_0$$
-     - Amenity Score: Set to $A_i = 1.0 - \frac{w_i}{20.0} \in [0.0, 1.0]$.
-     - Dwell Discomfort:
-       $$D(A_i) = 5.0 + 20.0 \cdot (1.0 - A_i) = 5.0 + 20.0 \cdot \frac{w_i}{20.0} = 5.0 + w_i = d_0 + w_i$$
-     - Time Contribution: $\text{Time}(A_i) = t_0 = 20.0$ min.
+6. **Parallel Branch Construction Using Exact Model Formulas (Long-Dwell Regime)**:
+   To accommodate arbitrary non-negative integer weights $w_i \in \mathbb{Z}^+$ and values $v_i \in \mathbb{Z}^+$ (unbounded by constant limits), we place both station branches into the **long-dwell regime** ($\text{dwell} > 40$ min), where the piecewise dwell window penalty is strictly linear:
+   $$\text{penalty}_{\text{window}}(\text{dwell}) = 1.50 \cdot (\text{dwell} - 40.0) \quad \text{for } \text{dwell} > 40.0$$
+   Total dwell discomfort for any stop in this regime with zero arrival penalty ($\text{SoC}_{\text{arr}} = 0.25 \le 0.35$) is:
+   $$D(t, A) = t \cdot (1.0 - A) + 1.50 \cdot (t - 40.0) + 5.0 = t \cdot (2.50 - A) - 55.0$$
 
-   - **Branch B (Station $B_i$ — Corresponds to $i \notin S$, "Leave Item $i$")**:
-     - Charger Power: Set to $P(B_i) = \frac{K_{\text{taper}}}{20.0 + v_i}$ kW.
-       $$\implies t_{\text{charge}}(B_i) = \frac{K_{\text{taper}}}{P(B_i)} = 20.0 + v_i \text{ min} = t_0 + v_i$$
-       Because $v_i \in [0, 20]$, $t_{\text{charge}} \in [20, 40]$ min, so the piecewise dwell window penalty is strictly $0.0$.
-     - Amenity Score: Set to $A_i = 1.0$ (luxury lounge $\implies 1 - A_i = 0.0$).
-     - Dwell Discomfort:
-       $$D(B_i) = 5.0 + (20.0 + v_i) \cdot (1.0 - 1.0) = 5.0 + 0 = d_0 + 0$$
-     - Time Contribution: $\text{Time}(B_i) = t_0 + v_i$ min.
+   We construct the station parameters for stage $i$ as follows:
+   - Base stage charge duration:
+     $$T_{A, i} = 50.0 + w_i + 2.0 \cdot v_i > 40.0 \text{ min}$$
+     $$T_{B, i} = T_{A, i} + v_i = 50.0 + w_i + 3.0 \cdot v_i > 40.0 \text{ min}$$
+   - Charger powers via closed-form continuous CC-CV taper:
+     $$P(A_i) = \frac{K_{\text{taper}}}{T_{A, i}}, \quad P(B_i) = \frac{K_{\text{taper}}}{T_{B, i}}$$
+     yielding exact physical recharge durations $t_{\text{charge}}(A_i) = T_{A, i}$ and $t_{\text{charge}}(B_i) = T_{B, i}$.
+     $$\implies \Delta T_i = T_{B, i} - T_{A, i} = v_i$$
+   - Amenity scores:
+     - For **Branch B (Station $B_i$)**: set $A_{B, i} = 1.0$ (luxury lounge).
+       $$D(B_i) = T_{B, i} \cdot (2.50 - 1.0) - 55.0 = 1.50 \cdot T_{B, i} - 55.0 \equiv D_{B, i}$$
+     - For **Branch A (Station $A_i$)**: set
+       $$A_{A, i} = 1.0 - \frac{w_i + 1.50 \cdot v_i}{T_{A, i}}$$
+       Because $T_{A, i} = 50.0 + w_i + 2.0 \cdot v_i > w_i + 1.50 \cdot v_i$, we have $0 < \frac{w_i + 1.50 v_i}{T_{A, i}} < 1$, ensuring $A_{A, i} \in (0.0, 1.0)$ is a strictly valid normalized amenity score!
+       Evaluating discomfort for Branch A:
+       $$D(A_i) = T_{A, i} \cdot (1.0 - A_{A, i}) + 1.50 \cdot T_{A, i} - 55.0 = (w_i + 1.50 \cdot v_i) + 1.50 \cdot T_{A, i} - 55.0$$
+       $$= 1.50 \cdot (T_{A, i} + v_i) - 55.0 + w_i = D_{B, i} + w_i$$
+       $$\implies \Delta D_i = D(A_i) - D(B_i) = w_i$$
+
+   Thus, for arbitrary integer weights $w_i$ and values $v_i$, choosing Branch A instead of Branch B:
+   - Decreases journey time by exactly $v_i$ minutes.
+   - Increases journey discomfort by exactly $w_i$ discomfort-minutes.
 
 7. **Shifted Decision Thresholds**:
-   - The constant unavoidable baseline offsets across all $n$ stages are:
-     $$T_{\text{base}} = T_0 + n \cdot t_0 = T_0 + 20n$$
-     $$D_{\text{base}} = n \cdot d_0 = 5n$$
+   - The constant baseline offsets across all $n$ stages are:
+     $$T_{\text{base}} = T_0 + \sum_{i=1}^{n} T_{A, i}$$
+     $$D_{\text{base}} = \sum_{i=1}^{n} D_{B, i}$$
    - We define the **shifted decision thresholds**:
-     $$D_{\text{target}} = D_{\text{base}} + W = 5n + W$$
-     $$T_{\text{target}} = T_{\text{base}} + \sum_{i=1}^{n} v_i - V^* = T_0 + 20n + \left( \sum_{i=1}^{n} v_i - V^* \right)$$
+     $$D_{\text{target}} = D_{\text{base}} + W = \sum_{i=1}^{n} D_{B, i} + W$$
+     $$T_{\text{target}} = T_{\text{base}} + \sum_{i=1}^{n} v_i - V^* = T_0 + \sum_{i=1}^{n} T_{A, i} + \left( \sum_{i=1}^{n} v_i - V^* \right)$$
 
 ---
 
@@ -138,18 +148,18 @@ Given an arbitrary instance of 0/1 Knapsack, we construct an EV road corridor wi
 #### ($\Rightarrow$) If 0/1 Knapsack has a feasible solution $S \subseteq \{1, \dots, n\}$:
 Construct an EV itinerary by setting the recharge at every stage $i$ to exactly $\Delta E = 9.0$ kWh, and choosing branches as follows:
 - If $i \in S$, choose **Branch A** (Station $A_i$):
-  $$\text{Time contribution} = t_0, \quad \text{Discomfort contribution} = d_0 + w_i$$
+  $$\text{Time contribution} = T_{A, i}, \quad \text{Discomfort contribution} = D_{B, i} + w_i$$
 - If $i \notin S$, choose **Branch B** (Station $B_i$):
-  $$\text{Time contribution} = t_0 + v_i, \quad \text{Discomfort contribution} = d_0$$
+  $$\text{Time contribution} = T_{A, i} + v_i, \quad \text{Discomfort contribution} = D_{B, i}$$
 
-- **Battery Feasibility**: As proven in Section 2.2, recharging $\Delta E = 9.0$ kWh ensures arrival SoC is exactly $0.25 = \text{reserve}$ at all stages and destination, with no battery depletion.
-- **Optimality of Recharge Amount**: As proven in Section 2.2, charging $\Delta E = 9.0$ kWh from $E_{\text{arr}} = 3.0$ kWh brings the battery to $E_{\text{dep}} = 12.0$ kWh ($100\%$ capacity). Recharging any less violates the safety reserve ($0.25$) on the subsequent leg, and recharging any more is physically impossible due to the 100% capacity limit. Hence $\Delta E = 9.0$ kWh is the unique feasible charge amount.
+- **Battery Feasibility**: Recharging $\Delta E = 9.0$ kWh ensures arrival SoC is exactly $0.25 = \text{reserve}$ at all stages and destination, with no battery depletion.
+- **Optimality of Recharge Amount**: Charging $\Delta E = 9.0$ kWh from $E_{\text{arr}} = 3.0$ kWh brings the battery to $E_{\text{dep}} = 12.0$ kWh ($100\%$ capacity). Recharging any less violates the safety reserve ($0.25$) on the subsequent leg, and recharging any more is physically impossible due to the 100% capacity limit. Hence $\Delta E = 9.0$ kWh is the unique feasible charge amount.
 
 Total Journey Discomfort:
-$$D_{\text{total}} = \sum_{i=1}^{n} d_0 + \sum_{i \in S} w_i = 5n + \sum_{i \in S} w_i \le 5n + W = D_{\text{target}}$$
+$$D_{\text{total}} = \sum_{i=1}^{n} D_{B, i} + \sum_{i \in S} w_i = D_{\text{base}} + \sum_{i \in S} w_i \le D_{\text{base}} + W = D_{\text{target}}$$
 
 Total Journey Time:
-$$T_{\text{total}} = T_0 + \sum_{i=1}^{n} t_0 + \sum_{i \notin S} v_i = T_{\text{base}} + \left( \sum_{i=1}^{n} v_i - \sum_{i \in S} v_i \right)$$
+$$T_{\text{total}} = T_0 + \sum_{i=1}^{n} T_{A, i} + \sum_{i \notin S} v_i = T_{\text{base}} + \left( \sum_{i=1}^{n} v_i - \sum_{i \in S} v_i \right)$$
 Since $\sum_{i \in S} v_i \ge V^*$, we have:
 $$T_{\text{total}} \le T_{\text{base}} + \sum_{i=1}^{n} v_i - V^* = T_{\text{target}}$$
 Thus, the EV planning itinerary satisfies both $T_{\text{total}} \le T_{\text{target}}$ and $D_{\text{total}} \le D_{\text{target}}$ while maintaining strict battery feasibility.
@@ -165,7 +175,7 @@ Define the item subset:
 $$S = \{i \mid b_i = A\}$$
 
 From the comfort budget constraint $D_{\text{total}} \le D_{\text{target}}$:
-$$5n + \sum_{i \in S} w_i \le 5n + W \implies \sum_{i \in S} w_i \le W$$
+$$D_{\text{base}} + \sum_{i \in S} w_i \le D_{\text{base}} + W \implies \sum_{i \in S} w_i \le W$$
 
 From the journey time bound $T_{\text{total}} \le T_{\text{target}}$:
 $$T_{\text{base}} + \sum_{i \notin S} v_i \le T_{\text{base}} + \sum_{i=1}^{n} v_i - V^*$$
@@ -173,8 +183,8 @@ $$\sum_{i=1}^{n} v_i - \sum_{i \in S} v_i \le \sum_{i=1}^{n} v_i - V^* \implies 
 Thus, $S$ is a valid subset for the 0/1 Knapsack problem satisfying both the weight budget $W$ and the target value $V^*$.
 
 ### 2.4 Complexity Classification: NP-Hard vs. NP-Complete
-- **Continuous Formulation**: In the continuous setting where journey time and battery levels are real-valued, proving membership in NP is non-trivial because solution certificates are real-valued. Hence, the general constrained problem is classified as **NP-hard**.
-- **Discretized Formulation**: When battery SoC is discretized to a grid $K$ and journey time/discomfort are discretized to integer or rational values, a polynomial-length certificate (the sequence of branch choices and discrete charge levels) can be verified in polynomial time $\mathcal{O}(|V_c|)$. In this discretized setting, the decision problem is **weakly NP-complete**. $\blacksquare$
+- **Continuous / Unbounded Formulation**: In the continuous setting where journey time and battery levels are real-valued, proving membership in NP is non-trivial because solution certificates are real-valued. Hence, the general constrained problem is classified as **NP-hard**.
+- **Discretized Formulation**: When battery SoC is discretized to a grid $K$ and journey time/discomfort are discretized to integer or rational values, a polynomial-length certificate (the sequence of branch choices and discrete charge levels) can be verified in polynomial time $\mathcal{O}(|V_c|)$. In this discretized setting, the decision problem belongs to NP, and being NP-hard, is **weakly NP-complete**. $\blacksquare$
 
 ---
 
@@ -199,12 +209,11 @@ If discomfort values are integers bounded by $D_{\max} \in \mathbb{Z}^+$:
   $$\text{Time: } \mathcal{O}\left( (|E_c| \cdot K + |V_c| \cdot K^2) \cdot D_{\max} \right)$$
   $$\text{Space: } \mathcal{O}(|V_c| \cdot K \cdot D_{\max})$$
 
-This confirms that the problem is **weakly NP-hard**: it can be solved in pseudo-polynomial time when $D_{\max}$ is bounded by an integer budget, but has no strongly polynomial algorithm unless $\text{P} = \text{NP}$.
+This confirms that the problem is **weakly NP-hard**: it can be solved in pseudo-polynomial time when $D_{\max}$ is bounded by an integer budget (which is polynomial when weights are bounded by a polynomial in $n$), but has no strongly polynomial algorithm unless $\text{P} = \text{NP}$.
 
 ---
 
 ## 4. References
 
 - **Garey, M. R., & Johnson, D. S. (1979)**. *Computers and Intractability: A Guide to the Theory of NP-Completeness*. W. H. Freeman.
-- **Hansen, P. (1980)**. *Bicriterion Path Problems*. Multiple Criteria Decision Making Theory and Application.
-- **Warburton, A. (1987)**. *Approximation of Pareto optima in multiple-objective, shortest-path problems*. Operations Research.
+- **Hansen, P. (1980)**. *Bicriterion Path Problems*. Multiple Criteria Decision Making Theory and Application, Lecture Notes in Economics and Mathematical Systems, vol 177, pp. 109–127. Springer, Berlin, Heidelberg.
