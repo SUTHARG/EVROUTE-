@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from core.models import Car, RoadEdge
+from core.models import Car, CorridorSnapshot, RoadEdge
 
 # Physical constants
 GRAVITY_M_S2: float = 9.80665
@@ -133,6 +133,44 @@ def edge_energy_kwh(
     e_aux_kwh = (car.auxiliary_power_kw * time_s) / 3600.0
 
     return e_traction_kwh + e_aux_kwh
+
+
+def snapshot_for_vehicle(snapshot: CorridorSnapshot, car: Car) -> CorridorSnapshot:
+    """Return a copy with road and station-spur energy recalculated for ``car``.
+
+    Persisted snapshots may contain energy values produced using the vehicle that
+    happened to be active when the snapshot was built. Geometry, duration and grade
+    are vehicle-independent, so they are the source of truth for planning.
+    Snapshots without an ``energy_vehicle_id`` are left alone for compatibility
+    with hand-authored algorithm fixtures that intentionally specify edge weights.
+    """
+    if snapshot.metadata.get("energy_vehicle_id") == car.id:
+        return snapshot
+    if not snapshot.metadata.get("energy_vehicle_id"):
+        return snapshot
+
+    vehicle_snapshot = snapshot.model_copy(deep=True)
+    crr = calibrate_crr(car)
+    for edge in vehicle_snapshot.edges:
+        edge.energy_kwh = edge_energy_kwh(
+            car,
+            edge.length_m,
+            edge.time_s,
+            edge.elevation_gain_m,
+            crr=crr,
+        )
+
+    for station in vehicle_snapshot.stations:
+        station.detour_energy_kwh = edge_energy_kwh(
+            car,
+            station.detour_distance_m,
+            station.detour_time_s,
+            0.0,
+            crr=crr,
+        )
+
+    vehicle_snapshot.metadata["energy_vehicle_id"] = car.id
+    return vehicle_snapshot
 
 
 def simulate_path_soc(

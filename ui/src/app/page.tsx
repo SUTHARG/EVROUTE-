@@ -3,12 +3,19 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { TopBar } from "@/components/TopBar";
-import { Sidebar, TripParams, VehicleOption, LocationWaypoint } from "@/components/Sidebar";
+import { Sidebar } from "@/components/Sidebar";
+import type { AppTab, LocationWaypoint, MobileSheetState, TripParams, VehicleOption } from "@/features/trip/model/types";
 import { BackendErrorModal } from "@/components/BackendErrorModal";
-import { RouteSocProfileDrawer } from "@/components/RouteSocProfileDrawer";
 import { RouteProgressModal, JobProgressInfo } from "@/components/RouteProgressModal";
 import { TripPlan, ChargingStopInfo, VehicleOptionItem } from "@/types/plan";
 import { API_BASE_URL } from "@/config/api";
+import {
+  buildCorridor,
+  fetchRouteBuildJob,
+  fetchVehicles,
+  refreshCorridorStations,
+  requestTripPlan,
+} from "@/features/trip/api";
 
 // Dynamically import Leaflet Map to avoid SSR window errors in Next.js
 const RouteMap = dynamic(
@@ -23,6 +30,10 @@ const RouteMap = dynamic(
     ),
   }
 );
+
+function describeError(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export default function Home() {
   const [params, setParams] = useState<TripParams>({
@@ -48,9 +59,9 @@ export default function Home() {
   });
   const [jobInfo, setJobInfo] = useState<JobProgressInfo | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"trip" | "plan" | "stations" | "analysis">("trip");
+  const [activeTab, setActiveTab] = useState<AppTab>("trip");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [mobileSheetState, setMobileSheetState] = useState<"collapsed" | "half" | "full">("half");
+  const [mobileSheetState, setMobileSheetState] = useState<MobileSheetState>("half");
 
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [plan, setPlan] = useState<TripPlan | null>(null);
@@ -81,7 +92,7 @@ export default function Home() {
   // 1. Fetch vehicles strictly from /cars
   const fetchCars = useCallback(async () => {
     try {
-      const resp = await fetch(`${API_BASE_URL}/cars`);
+      const resp = await fetchVehicles();
       if (resp.ok) {
         const data: Record<string, VehicleOptionItem> = await resp.json();
         const carList: VehicleOption[] = Object.values(data).map((c) => ({
@@ -107,10 +118,10 @@ export default function Home() {
         }
         setErrorMessage(`Server Error (HTTP ${resp.status}): ${detail || "Failed to load vehicle catalog"}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setApiOnline(false);
       setErrorMessage(
-        `FastAPI backend is unreachable at ${API_BASE_URL}. Start the server using 'python -m uvicorn api.main:app' to load vehicles and plan routes. (${err?.message || "Connection failed"})`
+        `FastAPI backend is unreachable at ${API_BASE_URL}. Start the server using 'python -m uvicorn api.main:app' to load vehicles and plan routes. (${describeError(err, "Connection failed")})`
       );
     }
   }, []);
@@ -129,10 +140,7 @@ export default function Home() {
     const snapshotToUse = targetSnapshotId || params.snapshotId;
 
     try {
-      const resp = await fetch(`${API_BASE_URL}/plan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const resp = await requestTripPlan({
           snapshot_id: snapshotToUse,
           car_id: params.carId,
           start_soc: params.startSoc,
@@ -142,7 +150,6 @@ export default function Home() {
           K: params.K,
           enable_filter: params.enableFilter,
           from_saved_snapshot: fromSavedSnapshot,
-        }),
       });
 
       // Discard stale responses if a newer request was dispatched
@@ -156,9 +163,6 @@ export default function Home() {
         setApiOnline(true);
         setErrorMessage(null);
         setActiveTab("plan");
-      } else if (resp.status === 404 && snapshotToUse.startsWith("corridor_") && !isBuildingRouteRef.current) {
-        setApiOnline(true);
-        handleBuildAndPlanRoute(origin, destination);
       } else {
         setApiOnline(true); // Server is reachable!
         let detail = "";
@@ -170,14 +174,14 @@ export default function Home() {
         }
         setErrorMessage(`Planning Error (HTTP ${resp.status}): ${detail || "Unable to compute trip plan"}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (activePlanReqIdRef.current !== currentReqId) {
         return;
       }
       setApiOnline(false);
       setPlan(null);
       setErrorMessage(
-        `Backend Unreachable: Unable to connect to ${API_BASE_URL}. Ensure the FastAPI server is running via 'python -m uvicorn api.main:app'. (${err?.message || "Failed to fetch"})`
+        `Backend Unreachable: Unable to connect to ${API_BASE_URL}. Ensure the FastAPI server is running via 'python -m uvicorn api.main:app'. (${describeError(err, "Failed to fetch")})`
       );
     } finally {
       if (activePlanReqIdRef.current === currentReqId) {
@@ -203,15 +207,11 @@ export default function Home() {
     setErrorMessage(null);
 
     try {
-      const buildResp = await fetch(`${API_BASE_URL}/routes/build`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const buildResp = await buildCorridor({
           origin: { lat: srcLoc.lat, lon: srcLoc.lon, label: srcLoc.label },
           destination: { lat: dstLoc.lat, lon: dstLoc.lon, label: dstLoc.label },
           use_synthetic: false,
           force_refresh: forceRefresh,
-        }),
       });
 
       if (!buildResp.ok) {
@@ -260,16 +260,18 @@ export default function Home() {
         cleanup();
         isBuildingRouteRef.current = false;
         setIsLoading(false);
-        setJobInfo((current) =>
-          current?.jobId === initialJob.job_id
-            ? {
-                ...current,
-                status: "failed",
-                progressStep: "Route build stopped",
-                errorMessage: message,
-              }
-            : current
-        );
+        setJobInfo((current) => {
+          if (!current || current.jobId !== initialJob.job_id) return current;
+          return {
+            jobId: current.jobId,
+            status: "failed",
+            progressStep: "Route build stopped",
+            percent: current.percent,
+            errorMessage: message,
+            originLabel: current.originLabel,
+            destLabel: current.destLabel,
+          };
+        });
       };
       pollCleanupRef.current = cleanup;
 
@@ -287,7 +289,7 @@ export default function Home() {
         isPollInFlight = true;
 
         try {
-          const jobResp = await fetch(`${API_BASE_URL}/jobs/${initialJob.job_id}`);
+          const jobResp = await fetchRouteBuildJob(initialJob.job_id);
           if (isCancelled) return;
 
           if (jobResp.ok) {
@@ -328,12 +330,12 @@ export default function Home() {
               return;
             }
           }
-        } catch (pollErr: any) {
+        } catch (pollErr: unknown) {
           if (isCancelled) return;
           consecutiveFailures += 1;
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             setApiOnline(false);
-            failJob(`Lost connection to the route builder after several attempts. ${pollErr?.message || "Check that the API server is running, then retry."}`);
+            failJob(`Lost connection to the route builder after several attempts. ${describeError(pollErr, "Check that the API server is running, then retry.")}`);
             return;
           }
         } finally {
@@ -346,11 +348,11 @@ export default function Home() {
 
       // Start initial poll cycle
       timeoutHandle = setTimeout(pollNext, 700);
-    } catch (err: any) {
+    } catch (err: unknown) {
       isBuildingRouteRef.current = false;
       setApiOnline(false);
       setIsLoading(false);
-      setErrorMessage(`Route build failed to start: ${err?.message || "Network error"}`);
+      setErrorMessage(`Route build failed to start: ${describeError(err, "Network error")}`);
     }
   }, [fetchPlan]);
 
@@ -359,13 +361,9 @@ export default function Home() {
   const handleRefreshStations = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await fetch(`${API_BASE_URL}/stations/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ snapshot_id: params.snapshotId }),
-      });
+      await refreshCorridorStations(params.snapshotId);
       await handleBuildAndPlanRoute(origin, destination);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Station refresh failed:", err);
     } finally {
       setIsRefreshing(false);
@@ -497,26 +495,12 @@ export default function Home() {
               corridorStations={plan ? plan.corridor_stations || [] : []}
               focusedStationId={focusedStationId}
               hoveredDistanceKm={hoveredDistanceKm}
-              onHoverDistance={setHoveredDistanceKm}
               onSelectStation={handleSelectStation}
               activeTab={activeTab}
               originLabel={plan?.source_name || origin.label}
               destinationLabel={plan?.destination_name || destination.label}
             />
 
-            {/* Bottom Docked Collapsible Battery SoC & Elevation Profile */}
-            {plan && plan.route_soc_profile && (
-              <RouteSocProfileDrawer
-                profile={plan.route_soc_profile}
-                stops={plan.stops || []}
-                reserveSoc={params.reserveSoc}
-                hoveredDistanceKm={hoveredDistanceKm}
-                onHoverDistance={setHoveredDistanceKm}
-                onSelectStation={handleSelectStation}
-                originLabel={plan?.source_name || origin.label}
-                destinationLabel={plan?.destination_name || destination.label}
-              />
-            )}
           </div>
 
           {/* Compact map and station data attribution */}
@@ -540,8 +524,12 @@ export default function Home() {
             <BackendErrorModal
               errorMessage={errorMessage}
               onRetry={() => {
-                fetchCars();
-                fetchPlan();
+                void fetchCars();
+                if (params.snapshotId) {
+                  void fetchPlan(params.snapshotId);
+                } else {
+                  setErrorMessage(null);
+                }
               }}
               onClose={() => setErrorMessage(null)}
               isLoading={isLoading}
