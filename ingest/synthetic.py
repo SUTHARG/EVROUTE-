@@ -187,7 +187,6 @@ def generate_synthetic_corridor(
             detour_distance_m=detour_round_trip_m,
             detour_time_s=detour_time_s,
             detour_energy_kwh=detour_energy_kwh,
-            route_distance_km=round(node_idx * seg_length_m / 1000.0, 3),
             power_assumed=False,
             connector_assumed=False,
             amenity_known=False,
@@ -198,7 +197,6 @@ def generate_synthetic_corridor(
 
     metadata: dict[str, Any] = {
         "synthetic": True,
-        "energy_vehicle_id": eval_car.id,
         "ascent_before_smoothing_m": ascent_before,
         "ascent_after_smoothing_m": ascent_after,
         "total_distance_km": total_distance_km,

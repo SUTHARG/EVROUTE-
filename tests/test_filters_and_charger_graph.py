@@ -208,9 +208,7 @@ def test_reduced_charger_graph_fastest_and_eco_paths():
 
     reduced_graph, stats = build_reduced_charger_graph(
         road_graph=road_graph,
-        # Provider order is arbitrary; the graph builder must use each station's
-        # projected corridor position when deciding which transitions are forward.
-        kept_stations=list(reversed(snapshot.stations[:3])),
+        kept_stations=snapshot.stations[:3],
         source_node_id=0,
         dest_node_id=30,
         car=car,
@@ -220,10 +218,6 @@ def test_reduced_charger_graph_fastest_and_eco_paths():
 
     assert stats["total_reduced_edges"] > 0
     assert stats["reduced_nodes_count"] == 5  # source, 3 stations, dest
-
-    corridor_order = sorted(snapshot.stations[:3], key=lambda station: station.route_distance_km)
-    first_station_edges = reduced_graph.get_driving_edges(f"{corridor_order[0].id}_dep")
-    assert any(edge.v == corridor_order[1].id for edge in first_station_edges)
 
     # Check outgoing transitions from source_dep
     source_edges = reduced_graph.get_driving_edges("source_dep")

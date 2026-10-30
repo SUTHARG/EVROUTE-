@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useRef } from "react";
 import { ChevronUp, ChevronDown, Activity } from "lucide-react";
-import { formatPercent } from "../utils/format";
+import { formatDistance, formatPercent } from "../utils/format";
 
 export interface ProfilePoint {
   distance_km: number;
@@ -83,14 +83,8 @@ export const RouteSocProfileDrawer: React.FC<RouteSocProfileDrawerProps> = ({
   const graphWidth = svgWidth - padding.left - padding.right;
   const graphHeight = svgHeight - padding.top - padding.bottom;
 
-  const getX = React.useCallback(
-    (distKm: number) => padding.left + (distKm / maxDist) * graphWidth,
-    [padding.left, maxDist, graphWidth],
-  );
-  const getY = React.useCallback(
-    (socFrac: number) => padding.top + (1.0 - Math.max(0, Math.min(1.0, socFrac))) * graphHeight,
-    [padding.top, graphHeight],
-  );
+  const getX = (distKm: number) => padding.left + (distKm / maxDist) * graphWidth;
+  const getY = (socFrac: number) => padding.top + (1.0 - Math.max(0, Math.min(1.0, socFrac))) * graphHeight;
 
   // Build single smooth line path and area path
   const { linePath, areaPath } = useMemo(() => {
@@ -110,7 +104,7 @@ export const RouteSocProfileDrawer: React.FC<RouteSocProfileDrawerProps> = ({
     const dArea = `${dLine} L ${pts[pts.length - 1].x.toFixed(1)},${bottomY} L ${pts[0].x.toFixed(1)},${bottomY} Z`;
 
     return { linePath: dLine, areaPath: dArea };
-  }, [sampledProfile, getX, getY, graphHeight, padding.top]);
+  }, [sampledProfile, maxDist, padding.left, padding.top, graphHeight, graphWidth]);
 
   // Reserve line Y coordinate
   const reserveY = getY(reserveSoc);

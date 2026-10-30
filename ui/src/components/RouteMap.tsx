@@ -1,13 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, CircleMarker } from "react-leaflet";
 import L from "leaflet";
-import { Zap, ExternalLink } from "lucide-react";
+import { Zap, Coffee, Battery, ShieldAlert, Sparkles, Database, ExternalLink } from "lucide-react";
 import { formatDuration, formatPercent } from "../utils/format";
-import { formatFetchedTime, isAvailabilityLive, stationPowerLabel } from "../utils/station";
-
-const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
 export interface MapStation {
   id: string;
@@ -87,6 +84,15 @@ export interface MapChosenStop {
   data_provider_license?: string | null;
 }
 
+function stationPowerLabel(station: MapStation): string {
+  if (station.max_dc_kw) return `${station.max_dc_kw} kW DC`;
+  if (station.max_ac_kw) return `${station.max_ac_kw} kW AC`;
+  const hasDcPlug = station.connector_types?.some((connector) => /ccs|chademo/i.test(connector));
+  const hasAcPlug = station.connector_types?.some((connector) => /type\s*2/i.test(connector));
+  if (!hasDcPlug && hasAcPlug && station.power_assumed) return "7.2 kW AC assumed";
+  return `${station.max_kw} kW${hasDcPlug ? " DC" : ""}`;
+}
+
 interface RouteMapProps {
   routePoints: MapRoutePoint[];
   routeGeometry?: [number, number][];
@@ -94,6 +100,7 @@ interface RouteMapProps {
   corridorStations: MapStation[];
   focusedStationId?: string | null;
   hoveredDistanceKm?: number | null;
+  onHoverDistance?: (distanceKm: number | null) => void;
   onSelectStation?: (stationId: string) => void;
   activeTab?: string;
   originLabel?: string;
@@ -157,7 +164,7 @@ function AutoFitBounds({ points, activeTab }: { points: [number, number][]; acti
 }
 
 // Numbered Filled Stop Icon for Chosen Charging Stops (Amber #D97706 on Light Map)
-function createFilledStopIcon(stopNumber: number) {
+function createFilledStopIcon(stopNumber: number, label: string) {
   return L.divIcon({
     className: "custom-stop-marker",
     html: `
@@ -200,6 +207,34 @@ function createFilledStopIcon(stopNumber: number) {
     iconAnchor: [13, 42],
     popupAnchor: [0, -42],
   });
+}
+
+// Helper to test if live availability data is under 1 hour old
+function isAvailabilityLive(avail?: { last_updated?: string | null } | null): boolean {
+  if (!avail) return false;
+  if (!avail.last_updated) return true;
+  try {
+    const updated = new Date(avail.last_updated).getTime();
+    return Date.now() - updated < 3600 * 1000;
+  } catch {
+    return true;
+  }
+}
+
+function formatFetchedTime(isoStr?: string | null): string {
+  if (!isoStr) return "Unavailable";
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return isoStr;
+  }
 }
 
 // Marker icon for station dot: Green = free, Amber = busy, Gray = unknown, Hollow Gray = incompatible/unknown connector
@@ -298,6 +333,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   corridorStations,
   focusedStationId,
   hoveredDistanceKm,
+  onHoverDistance,
   onSelectStation,
   activeTab,
   originLabel,
@@ -403,18 +439,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         className="w-full h-full"
         style={{ height: "100%", width: "100%", position: "absolute", inset: 0, zIndex: 1 }}
       >
-        {/* Use Mapbox Streets when configured; keep OpenStreetMap as the no-key fallback. */}
+        {/* Clean Light Map Tiles (Standard OpenStreetMap) with Proper Attribution */}
         <TileLayer
-          attribution={
-            MAPBOX_ACCESS_TOKEN
-              ? '&copy; <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> <strong><a href="https://labs.mapbox.com/contribute/" target="_blank" rel="noopener noreferrer">Improve this map</a></strong>'
-              : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
-          }
-          url={
-            MAPBOX_ACCESS_TOKEN
-              ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=${MAPBOX_ACCESS_TOKEN}`
-              : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          }
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
 
@@ -509,7 +537,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
           <Marker
             key={`chosen-${stop.station_id}`}
             position={[stop.lat, stop.lon]}
-            icon={createFilledStopIcon(idx + 1)}
+            icon={createFilledStopIcon(idx + 1, `Stop ${idx + 1}`)}
             eventHandlers={{
               click: () => onSelectStation?.(stop.station_id),
             }}

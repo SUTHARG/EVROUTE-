@@ -15,9 +15,9 @@ from typing import Any
 
 from core.bellman_ford import bellman_ford, dijkstra, reconstruct_path
 from core.energy import build_arrival_soc_table, compute_path_energy_summary
-from core.geo import haversine_distance_m
 from core.models import Car, ReducedEdge, RoadEdge, Station
 from core.road_graph import RoadGraph
+from ingest.route import haversine_distance_m
 
 
 class ReducedChargerGraph:
@@ -129,19 +129,8 @@ def build_reduced_charger_graph(
         **st_node_map,
     }
 
-    # Provider merge order is not route order. The planner only creates forward
-    # transitions, so use projected corridor distance. For older snapshots that
-    # lack projections, fall back to distance along the road graph from the source.
-    source_distances, _ = dijkstra(road_graph, source_node_id, weight_attr="length_m")
-
-    def station_position(station: Station) -> float:
-        if station.route_distance_km > 0.0:
-            return station.route_distance_km
-        node_id = st_node_map.get(station.id)
-        return source_distances.get(node_id, float("inf")) if node_id is not None else float("inf")
-
-    ordered_stations = sorted(kept_stations, key=station_position)
-    all_terminals = ["source"] + [st.id for st in ordered_stations] + ["dest"]
+    # Ordered list of terminal IDs
+    all_terminals = ["source"] + [st.id for st in kept_stations] + ["dest"]
     num_terminals = len(all_terminals)
 
     eco_better_count = 0

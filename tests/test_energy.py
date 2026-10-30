@@ -10,9 +10,8 @@ from core.energy import (
     compute_path_energy_summary,
     edge_energy_kwh,
     simulate_path_soc,
-    snapshot_for_vehicle,
 )
-from core.models import PRESET_CARS, Car, CorridorSnapshot, RoadEdge, RoadNode, Station, Trip
+from core.models import PRESET_CARS, Car, RoadEdge, Station, Trip
 
 
 def test_preset_cars_and_effective_range():
@@ -27,47 +26,6 @@ def test_preset_cars_and_effective_range():
     effective_kwh = nexon.effective_energy_kwh(reserve_soc=0.10)
     expected_kwh = (40.5 * 0.95) * 0.90
     assert effective_kwh == pytest.approx(expected_kwh)
-
-
-def test_snapshot_road_energy_is_recalculated_for_selected_vehicle():
-    """Vehicle-specific planning must not reuse the snapshot builder's default EV energy."""
-    nexon = PRESET_CARS["tata_nexon_ev_lr"]
-    tiago = PRESET_CARS["tata_tiago_ev"]
-    original_energy = edge_energy_kwh(nexon, 10_000.0, 500.0, 100.0)
-    snapshot = CorridorSnapshot(
-        id="vehicle-energy-fixture",
-        source_name="Origin",
-        destination_name="Destination",
-        created_at="2026-10-26T00:00:00Z",
-        nodes={
-            0: RoadNode(id=0, lat=18.0, lon=72.0),
-            1: RoadNode(id=1, lat=18.1, lon=72.1),
-        },
-        edges=[
-            RoadEdge(
-                u=0,
-                v=1,
-                length_m=10_000.0,
-                time_s=500.0,
-                elevation_gain_m=100.0,
-                energy_kwh=original_energy,
-            )
-        ],
-        stations=[],
-        source_node_id=0,
-        destination_node_id=1,
-        metadata={"energy_vehicle_id": nexon.id},
-    )
-
-    tiago_snapshot = snapshot_for_vehicle(snapshot, tiago)
-
-    assert tiago_snapshot is not snapshot
-    assert tiago_snapshot.edges[0].energy_kwh == pytest.approx(
-        edge_energy_kwh(tiago, 10_000.0, 500.0, 100.0)
-    )
-    assert tiago_snapshot.edges[0].energy_kwh != pytest.approx(original_energy)
-    assert snapshot.edges[0].energy_kwh == pytest.approx(original_energy)
-    assert tiago_snapshot.metadata["energy_vehicle_id"] == tiago.id
 
 
 def test_station_simulated_tag():

@@ -250,9 +250,7 @@ def test_live_delhi_agra_planning():
     assert plan["feasible"] is True
     assert plan["synthetic"] is False
     assert plan["data_provenance"] == "open_data_providers"
-    # Provider snapshots are refreshed independently; assert the contract rather
-    # than a count tied to one particular snapshot revision.
-    assert len(plan["corridor_stations"]) > 0
+    assert len(plan["corridor_stations"]) == 54
 
     # Type 2 stations on the corridor can support the Nexon at a realistic AC rate.
     payload_ac_route = {

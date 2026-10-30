@@ -16,6 +16,8 @@ import {
   ChevronUp,
   RotateCw,
   ExternalLink,
+  ShieldCheck,
+  Coffee,
   Info,
   ArrowUpDown,
   Sparkles,
@@ -23,24 +25,79 @@ import {
   Database,
 } from "lucide-react";
 import { formatDuration, formatPercent } from "../utils/format";
-import { formatFetchedTime, isAvailabilityLive, stationPowerLabel } from "../utils/station";
 import { TripPlan, ChargingStopInfo, CorridorStationInfo, ParetoPoint } from "@/types/plan";
 import benchmarkResults from "../data/benchmark_results.json";
-import type {
-  AppTab,
-  LocationWaypoint,
-  MobileSheetState,
-  TripParams,
-  VehicleOption,
-} from "@/features/trip/model/types";
-import { useGeocodeAutocomplete } from "@/features/trip/hooks/useGeocodeAutocomplete";
+import { API_BASE_URL } from "@/config/api";
 
 const IS_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
+function isAvailabilityLive(avail?: { last_updated?: string | null } | null): boolean {
+  if (!avail) return false;
+  if (!avail.last_updated) return true;
+  try {
+    const updated = new Date(avail.last_updated).getTime();
+    return Date.now() - updated < 3600 * 1000;
+  } catch {
+    return true;
+  }
+}
+
+function formatFetchedTime(isoStr?: string | null): string {
+  if (!isoStr) return "Unavailable";
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return isoStr;
+  }
+}
+
+function stationPowerLabel(station: CorridorStationInfo): string {
+  if (station.max_dc_kw) return `${station.max_dc_kw} kW DC`;
+  if (station.max_ac_kw) return `${station.max_ac_kw} kW AC`;
+  const hasDcPlug = station.connector_types?.some((connector) => /ccs|chademo/i.test(connector));
+  const hasAcPlug = station.connector_types?.some((connector) => /type\s*2/i.test(connector));
+  if (!hasDcPlug && hasAcPlug && station.power_assumed) return "7.2 kW AC assumed";
+  return `${station.max_kw} kW${hasDcPlug ? " DC" : ""}`;
+}
+
+export interface VehicleOption {
+  id: string;
+  name: string;
+  battery_kwh: number;
+  max_dc_kw: number;
+  supported_connectors?: string[];
+  is_placeholder_profile?: boolean;
+  description?: string;
+}
+
+export interface TripParams {
+  snapshotId: string;
+  carId: string;
+  startSoc: number;
+  reserveSoc: number;
+  stopThresholdSoc: number;
+  comfortLambda: number;
+  K: number;
+  enableFilter: boolean;
+}
+
+export interface LocationWaypoint {
+  lat: number;
+  lon: number;
+  label: string;
+}
+
 export interface SidebarProps {
   // Navigation & Tabs
-  activeTab: AppTab;
-  onTabChange: (tab: AppTab) => void;
+  activeTab: "trip" | "plan" | "stations" | "analysis";
+  onTabChange: (tab: "trip" | "plan" | "stations" | "analysis") => void;
 
   // Waypoints
   origin: LocationWaypoint;
@@ -63,8 +120,8 @@ export interface SidebarProps {
   selectedStationId?: string | null;
 
   // Mobile drawer state
-  mobileSheetState?: MobileSheetState;
-  onChangeMobileSheetState?: (state: MobileSheetState) => void;
+  mobileSheetState?: "collapsed" | "half" | "full";
+  onChangeMobileSheetState?: (state: "collapsed" | "half" | "full") => void;
 
   // Station refresh
   onRefreshStations?: () => void;
@@ -98,22 +155,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [stationSearch, setStationSearch] = useState("");
 
   // Geocoding autocomplete states
-  const {
-    fromQuery,
-    setFromQuery,
-    toQuery,
-    setToQuery,
-    fromCandidates,
-    setFromCandidates,
-    toCandidates,
-    setToCandidates,
-    isSearchingFrom,
-    isSearchingTo,
-    showFromDropdown,
-    setShowFromDropdown,
-    showToDropdown,
-    setShowToDropdown,
-  } = useGeocodeAutocomplete();
+  const [fromQuery, setFromQuery] = useState(origin.label);
+  const [toQuery, setToQuery] = useState(destination.label);
+  const [fromCandidates, setFromCandidates] = useState<Array<{ label: string; lat: number; lon: number }>>([]);
+  const [toCandidates, setToCandidates] = useState<Array<{ label: string; lat: number; lon: number }>>([]);
+  const [isSearchingFrom, setIsSearchingFrom] = useState(false);
+  const [isSearchingTo, setIsSearchingTo] = useState(false);
+  const [showFromDropdown, setShowFromDropdown] = useState(false);
+  const [showToDropdown, setShowToDropdown] = useState(false);
 
   // Redirect from analysis tab if demo mode is active
   React.useEffect(() => {
@@ -121,6 +170,63 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onTabChange("trip");
     }
   }, [activeTab, onTabChange]);
+
+  // Sync inputs when external origin/destination changes
+  React.useEffect(() => {
+    setFromQuery(origin.label);
+  }, [origin.label]);
+
+  React.useEffect(() => {
+    setToQuery(destination.label);
+  }, [destination.label]);
+
+  // Debounced search for Origin
+  React.useEffect(() => {
+    if (!showFromDropdown || !fromQuery.trim()) {
+      setFromCandidates([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingFrom(true);
+      try {
+        const resp = await fetch(`${API_BASE_URL}/geocode?q=${encodeURIComponent(fromQuery.trim())}&limit=5`);
+        if (resp.ok) {
+          const data = await resp.json();
+          setFromCandidates(data);
+        }
+      } catch (err) {
+        console.error("Geocode error:", err);
+      } finally {
+        setIsSearchingFrom(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [fromQuery, showFromDropdown]);
+
+  // Debounced search for Destination
+  React.useEffect(() => {
+    if (!showToDropdown || !toQuery.trim()) {
+      setToCandidates([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingTo(true);
+      try {
+        const resp = await fetch(`${API_BASE_URL}/geocode?q=${encodeURIComponent(toQuery.trim())}&limit=5`);
+        if (resp.ok) {
+          const data = await resp.json();
+          setToCandidates(data);
+        }
+      } catch (err) {
+        console.error("Geocode error:", err);
+      } finally {
+        setIsSearchingTo(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [toQuery, showToDropdown]);
 
   const handleSwap = () => {
     const temp = { ...origin };
@@ -301,7 +407,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     value={fromQuery}
                     onChange={(e) => {
                       setFromQuery(e.target.value);
-                      setFromCandidates([]);
                       setShowFromDropdown(true);
                     }}
                     onFocus={() => setShowFromDropdown(true)}
@@ -356,7 +461,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     value={toQuery}
                     onChange={(e) => {
                       setToQuery(e.target.value);
-                      setToCandidates([]);
                       setShowToDropdown(true);
                     }}
                     onFocus={() => setShowToDropdown(true)}
@@ -619,7 +723,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="p-6 text-center rounded-xl bg-white border border-gray-200 text-xs text-gray-500 space-y-2">
                 <Navigation size={24} className="mx-auto text-gray-400" />
                 <div className="font-semibold text-gray-700">No plan generated yet</div>
-                <p>Select your vehicle profile and choose Plan trip to compute the optimal itinerary.</p>
+                <p>Select your vehicle profile and tap "Plan trip" to compute the optimal itinerary.</p>
               </div>
             ) : !plan.feasible ? (
               <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-xs space-y-2">

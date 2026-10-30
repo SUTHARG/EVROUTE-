@@ -18,7 +18,7 @@ from core.charging import (
     station_charging_options,
 )
 from core.comfort import compute_dwell_discomfort
-from core.energy import discretize_soc_level, level_to_soc, snapshot_for_vehicle
+from core.energy import discretize_soc_level, level_to_soc
 from core.filters import filter_stations_greedy
 from core.models import (
     Car,
@@ -134,7 +134,6 @@ class EVPlanner:
         """
         active_lambda = lambda_val if lambda_val is not None else trip.comfort_weight_lambda
         K = trip.K
-        snapshot = snapshot_for_vehicle(snapshot, car)
 
         # Step 1: Identify terminal road nodes
         source_node_id = (

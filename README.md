@@ -173,12 +173,7 @@ To reveal the Analysis tab, Pareto frontier explorer, algorithm performance coun
 
    # Set to true to switch back to manufacturer-rated vehicle ranges
    USE_CAR_SPECIFIC_RANGE=true
-
-   # Optional: use Mapbox Streets tiles instead of the default OpenStreetMap tiles
-   # Create a public token in your Mapbox account and restrict it to your app's URL.
-   NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=
    ```
-   Mapbox tiles are enabled when this token is set. If it is blank, the map uses OpenStreetMap.
 2. Restart or rebuild the Next.js frontend:
    ```bash
    cd ui

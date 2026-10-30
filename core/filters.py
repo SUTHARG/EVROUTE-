@@ -12,8 +12,8 @@ from collections.abc import Callable
 from typing import Any
 
 from core.config import ALLOW_UNKNOWN_CONNECTORS
-from core.geo import haversine_distance_m
 from core.models import Car, Station
+from ingest.route import haversine_distance_m
 
 
 def compute_station_score(
