@@ -249,6 +249,7 @@ def build_corridor_from_coords(
 
     metadata = {
         "synthetic": is_synthetic,
+        "energy_vehicle_id": eval_car.id,
         "data_provenance": provenance,
         "is_live_build": not is_synthetic,
         "built_at": datetime.now(UTC).isoformat(),
@@ -269,6 +270,8 @@ def build_corridor_from_coords(
         nodes=nodes,
         edges=edges,
         stations=stations,
+        source_node_id=0,
+        destination_node_id=len(nodes) - 1,
         metadata=metadata,
     )
 

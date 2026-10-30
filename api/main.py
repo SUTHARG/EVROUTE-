@@ -32,7 +32,9 @@ from api.schemas import (
     StationRefreshRequest,
     StationSummary,
 )
-from core.models import PRESET_CARS, Car, CorridorSnapshot, Trip
+from api.snapshot_store import SNAPSHOT_CACHE as _SNAPSHOT_CACHE
+from api.snapshot_store import SNAPSHOTS_DIR, get_snapshot, load_all_snapshots
+from core.models import PRESET_CARS, Car, Trip
 from core.planner import EVPlanner
 from ingest.build_snapshot import build_corridor_from_coords
 from ingest.geocode import search_geocode
@@ -85,7 +87,12 @@ app = FastAPI(
 # Explicit CORS for local web development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,43 +102,7 @@ app.add_middleware(
 planner = EVPlanner()
 
 # Snapshot storage cache
-_SNAPSHOT_CACHE: dict[str, CorridorSnapshot] = {}
 _LIVE_BUILT_SNAPSHOTS: set[str] = set()
-SNAPSHOTS_DIR = Path("data/snapshots")
-
-
-def load_all_snapshots() -> dict[str, CorridorSnapshot]:
-    """Discover and parse all available snapshot JSON files into memory cache."""
-    if not SNAPSHOTS_DIR.exists():
-        return {}
-
-    for file_path in SNAPSHOTS_DIR.glob("*.json"):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            snapshot = CorridorSnapshot(**data)
-            # Files loaded from disk storage are saved snapshots, not fresh in-session live builds
-            snapshot.metadata["is_live_build"] = False
-            _SNAPSHOT_CACHE[snapshot.id] = snapshot
-            # Also key by file stem for convenient lookup
-            _SNAPSHOT_CACHE[file_path.stem] = snapshot
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
-            print(f"[!] Warning: failed to load snapshot {file_path}: {e}")
-
-    return _SNAPSHOT_CACHE
-
-
-def get_snapshot(snapshot_id: str) -> CorridorSnapshot:
-    """Retrieve snapshot by ID or filename stem, reloading cache if missing."""
-    if snapshot_id not in _SNAPSHOT_CACHE:
-        load_all_snapshots()
-
-    if snapshot_id not in _SNAPSHOT_CACHE:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Snapshot '{snapshot_id}' not found. Available: {list(_SNAPSHOT_CACHE.keys())}",
-        )
-    return _SNAPSHOT_CACHE[snapshot_id]
 
 
 @app.get("/health", response_model=HealthResponse)
