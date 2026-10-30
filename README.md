@@ -217,3 +217,148 @@ If you do not have an `OCM_API_KEY`, Route.ev supports an offline snapshot provi
 - **Open-Meteo**: Highway elevation profiles powered by the Open-Meteo Elevation API (CC BY 4.0).
 - **OSRM**: Road network routing powered by Project-OSRM.
 
+---
+
+## 10. Project Structure and Module Reference
+
+This section maps the repository files to their responsibilities. Start with `api/main.py` for HTTP behavior, `core/planner.py` for the route optimizer, `ingest/build_snapshot.py` for creating corridor data, and `ui/src/app/page.tsx` for the main web application flow.
+
+### Repository-level files
+
+| File | Purpose |
+|---|---|
+| `README.md` | Setup, run instructions, data provenance, architecture assumptions, analysis notes, and this module reference. |
+| `ARCHITECTURE.md` | Module boundaries, dependency direction, data rules, and incremental migration guidance. |
+| `pyproject.toml` | Python package metadata, runtime dependencies, optional dev dependencies, and pytest/Ruff configuration. |
+| `requirements.txt` | Core Python runtime dependencies for the API and planner. |
+| `requirements-dev.txt` | Additional test and lint dependencies. |
+| `.env.example` | Backend environment-variable template. Copy to `.env` and provide local values; never commit real keys. |
+
+### `api/` — FastAPI application
+
+| File | Purpose |
+|---|---|
+| `api/main.py` | Creates the FastAPI app, runs startup loading, configures CORS, and implements health, vehicle, snapshot, geocoding, route-build, job-status, planning, Pareto, benchmark, and station-refresh endpoints. |
+| `api/schemas.py` | Pydantic request and response models that define the HTTP contract between the frontend and backend. |
+| `api/snapshot_store.py` | Loads saved corridor JSON files into the in-memory snapshot cache and resolves snapshot IDs for API handlers. |
+| `api/__init__.py` | Marks `api` as a Python package. |
+
+### `core/` — domain models and route-planning algorithms
+
+| File | Purpose |
+|---|---|
+| `core/models.py` | Shared domain models for vehicles, stations, road nodes and edges, corridor snapshots, trips, charge stops, route profiles, Pareto points, and plans. Also defines preset vehicles. |
+| `core/geo.py` | Geographic distance helpers shared by routing and ingestion code. |
+| `core/road_graph.py` | Directed road-graph representation and graph operations over road nodes and edges. |
+| `core/bellman_ford.py` | Bellman-Ford, Johnson reweighting, Dijkstra, negative-cycle detection, and path reconstruction. Supports regenerative edges with negative energy weights. |
+| `core/charger_graph.py` | Contracts the road graph to charger candidates and precomputes fastest and minimum-energy transitions between them. |
+| `core/energy.py` | Vehicle energy model: rolling and aerodynamic loads, elevation effects, regenerative recovery, SoC propagation, and battery-feasibility tables. |
+| `core/charging.py` | CC-CV charging-time calculations, SoC inversion, charge-level options, and dwell-window target generation. |
+| `core/comfort.py` | Calculates dwell discomfort and penalties for charging behavior relative to the preferred stop window. |
+| `core/filters.py` | Scores and reduces candidate charging stations while restoring candidates when needed to preserve range/connectivity. |
+| `core/planner.py` | Main optimization engine. Searches a layered charger/SoC state graph for travel-time and comfort trade-offs and constructs plan results. |
+| `core/brute_force.py` | Independent exhaustive solver for small cases, used as a reference for validating the dynamic-programming planner. |
+| `core/oracle.py` | Exhaustive multi-route oracle for small acyclic road topologies, including charger subsets and discrete charging decisions. |
+| `core/config.py` | Loads and provides access to backend settings and provider keys without exposing secret values in API responses. |
+| `core/__init__.py` | Marks `core` as a Python package. |
+
+### `ingest/` — data collection and corridor construction
+
+| File | Purpose |
+|---|---|
+| `ingest/build_snapshot.py` | End-to-end corridor builder: obtains route geometry, road nodes, elevation, and charging stations, then assembles a reusable snapshot. Also provides a CLI. |
+| `ingest/route.py` | OSRM client for road routes and spur detours, with configurable service URL and disk caching. |
+| `ingest/elevation.py` | Samples elevation data, smooths noisy profiles, and calculates route ascent/descent inputs. |
+| `ingest/geocode.py` | Nominatim geocoding and autocomplete search with throttling, disk cache, and offline fallbacks. |
+| `ingest/station_providers.py` | Common station-provider interface and clients for verified CSV, Google Places, Open Charge Map, and Overpass. Normalizes connector data, merges records, and deduplicates nearby results. |
+| `ingest/stations.py` | Station ingestion policies, provenance classification, curated/verified station loading, Overpass queries, reliability labels, and route-distance calculations. |
+| `ingest/ocm_snapshot.py` | Reads a local Open Charge Map export, filters and indexes Indian charging points, normalizes records, and finds stations near a corridor. |
+| `ingest/amenities.py` | Queries nearby amenities through Overpass and computes station amenity scores. |
+| `ingest/cache.py` | Small disk-backed JSON cache used to reduce repeated external API requests. |
+| `ingest/synthetic.py` | Generates synthetic corridor snapshots and random geometric graphs for demos, offline work, and algorithm experiments. |
+| `ingest/topologies.py` | Builds small diamond and ladder corridor graphs for multi-route algorithm checks. |
+| `ingest/__init__.py` | Marks `ingest` as a Python package. |
+
+### `data/` — saved and curated input data
+
+| Path | Purpose |
+|---|---|
+| `data/snapshots/*.json` | Saved corridor snapshots that the API can load and plan against. The committed synthetic snapshot is illustrative. |
+| `data/stations/verified_stations.csv` | User-maintained station records. Verified rows need source URLs and inspection dates to receive verified provenance. |
+| `data/ocm_snapshot/` | Optional location for the compressed Open Charge Map export. It is intentionally kept out of Git because the export can be large. |
+| `data/cache/` | Local cache for provider, geocoding, and route requests; cache contents are generated during use. |
+
+### `analysis/` — research, benchmarks, and generated results
+
+| File or path | Purpose |
+|---|---|
+| `analysis/benchmarks.py` | Runs planner scaling, brute-force comparison, SoC-grid convergence, and reduced-versus-full graph benchmarks; can write result data and plots. |
+| `analysis/benchmark_results.json` | Recorded benchmark output consumed by reports or the UI. |
+| `analysis/elevation_study.py` | Studies elevation smoothing choices and their effect on energy and feasibility. |
+| `analysis/filter_price_study.py` | Measures the speedup and optimality impact of greedy charger filtering. |
+| `analysis/heuristic_dwell_study.py` | Compares heuristic dwell targets with exhaustive discrete departure-level enumeration. |
+| `analysis/complexity.md` | Derives the asymptotic costs of the reduced charger-graph dynamic program. |
+| `analysis/np_hardness.md` | Documents the reduction proving the comfort-budgeted problem is NP-hard. |
+| `analysis/plots/` | Saved charts for benchmark runtime, grid convergence, brute-force comparison, and elevation smoothing. |
+
+### `tests/` — automated checks and fixtures
+
+| File | Main coverage |
+|---|---|
+| `tests/test_api.py` | FastAPI endpoint behavior and request/response handling. |
+| `tests/test_audit_fixes.py` | Regression checks for previously identified correctness and audit issues. |
+| `tests/test_bellman_ford.py` | Shortest paths, Johnson reweighting, and negative-weight road edges. |
+| `tests/test_candidate_restoration_and_env.py` | Charger candidate restoration and configuration/environment behavior. |
+| `tests/test_charging.py` | CC-CV charging times, SoC inversion, and charging options. |
+| `tests/test_comfort.py` | Dwell-discomfort calculations and penalty behavior. |
+| `tests/test_demo_mode.py` | Demo-mode configuration and feature visibility. |
+| `tests/test_diamond_oracle.py` | Multi-route correctness against the exhaustive oracle on diamond graphs. |
+| `tests/test_energy.py` | Energy use, regeneration, battery constraints, and vehicle-specific snapshot energy. |
+| `tests/test_filters_and_charger_graph.py` | Candidate filtering, connectivity restoration, and reduced graph transitions. |
+| `tests/test_geocode.py` | Geocoding query parsing, normalization, caching, and result behavior. |
+| `tests/test_geometry.py` | Route geometry and geographic calculations. |
+| `tests/test_knapsack_gadget.py` | Correctness of the NP-hardness reduction construction. |
+| `tests/test_live_route_and_provenance.py` | Live route construction, source metadata, and provenance labels. |
+| `tests/test_parsers.py` | Parsing and normalization of external provider payloads. |
+| `tests/test_property_bf.py` | Property-based checks for shortest-path algorithms. |
+| `tests/test_route_builder.py` | Corridor snapshot build pipeline and route-builder behavior. |
+| `tests/test_stop_position.py` | Charger ordering and position along a route. |
+| `tests/test_synthetic.py` | Synthetic graph and corridor generation. |
+| `tests/fixtures/` | Small saved provider responses and route/station examples used by tests without live API calls. |
+
+### `ui/` — Next.js and React frontend
+
+| File or path | Purpose |
+|---|---|
+| `ui/src/app/page.tsx` | Main client page. Coordinates trip inputs, backend requests, route-build job polling, selected plan, errors, tabs, and map state. |
+| `ui/src/app/layout.tsx` | Root Next.js layout and page metadata. |
+| `ui/src/app/globals.css` | Global styles, Tailwind layers, and application-wide layout rules. |
+| `ui/src/app/favicon.ico` | Browser tab icon. |
+| `ui/src/components/TopBar.tsx` | Header with app status, corridor name, and sidebar controls. |
+| `ui/src/components/Sidebar.tsx` | Trip input and settings panel, sample routes, vehicle selection, station/plan views, and analysis controls. |
+| `ui/src/components/RouteMap.tsx` | Leaflet map, route lines, charging-station markers and details, focus behavior, and optional Mapbox Streets tiles. |
+| `ui/src/components/RouteProgressModal.tsx` | Progress display for asynchronous corridor-building jobs. |
+| `ui/src/components/BackendErrorModal.tsx` | API connection and planning error display with retry/dismiss actions. |
+| `ui/src/components/RouteSocProfileDrawer.tsx` | Elevation and battery SoC profile visualization for the planned route. |
+| `ui/src/config/api.ts` | Resolves the API base URL from `NEXT_PUBLIC_API_BASE_URL` or its fallback. |
+| `ui/src/features/trip/api.ts` | Typed frontend calls for vehicles, trip planning, route building, job polling, and station refresh. |
+| `ui/src/features/trip/hooks/useGeocodeAutocomplete.ts` | Geocoding search state and API requests for origin/destination suggestions. |
+| `ui/src/features/trip/model/types.ts` | Frontend types for trip settings, waypoints, vehicles, tabs, and mobile panel state. |
+| `ui/src/types/plan.ts` | TypeScript shapes for plan, stop, route-profile, station, availability, and Pareto API data. |
+| `ui/src/utils/format.ts` | Shared display formatting for durations, distances, and percentages. |
+| `ui/src/utils/station.ts` | Shared station power, availability freshness, and fetched-time presentation helpers. |
+| `ui/src/data/benchmark_results.json` | Benchmark data displayed in the analysis UI. |
+| `ui/public/` | Static public assets, including the Next.js starter SVGs. |
+| `ui/package.json` and `ui/package-lock.json` | Frontend scripts and pinned JavaScript dependency graph. |
+| `ui/next.config.ts`, `ui/tsconfig.json`, `ui/eslint.config.mjs` | Next.js, TypeScript, and ESLint configuration. |
+| `ui/.env.example` | Frontend environment template for API base URL, demo mode, and optional public Mapbox token. |
+| `ui/AGENTS.md` | Local development guidance for work in the frontend directory. |
+
+### Typical request flow
+
+1. The browser loads vehicle presets from `GET /cars` and sends place searches to `GET /geocode`.
+2. The user selects a saved route or submits origin and destination. For a new route, the UI calls `POST /routes/build` and polls `GET /jobs/{job_id}`.
+3. The backend collects route geometry, elevation, and station candidates through `ingest/`, then stores the completed corridor in the snapshot cache.
+4. The UI submits the chosen snapshot and EV settings to `POST /plan`.
+5. `core/` builds candidate charger transitions, simulates energy and charging, and finds an itinerary balancing travel time and dwell discomfort. The API returns a plan for the map, stop list, and SoC/elevation profile.
+
