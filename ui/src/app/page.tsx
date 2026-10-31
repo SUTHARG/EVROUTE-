@@ -217,7 +217,7 @@ export default function Home() {
           destination: { lat: dstLoc.lat, lon: dstLoc.lon, label: dstLoc.label },
           use_synthetic: false,
           force_refresh: forceRefresh,
-          max_routes: 2,
+          max_routes: 3,
       });
 
       if (!buildResp.ok) {
@@ -252,7 +252,7 @@ export default function Home() {
       let isPollInFlight = false;
       let consecutiveFailures = 0;
       const MAX_CONSECUTIVE_FAILURES = 5;
-      const MAX_POLL_TIMEOUT_MS = 360000; // Compare up to two corridors and their station data.
+      const MAX_POLL_TIMEOUT_MS = 480000; // Compare up to three corridors and their station data.
       const startTime = Date.now();
 
       const cleanup = () => {
@@ -286,7 +286,7 @@ export default function Home() {
 
         // Check overall timeout
         if (Date.now() - startTime > MAX_POLL_TIMEOUT_MS) {
-          failJob("The route builder did not finish within 6 minutes. A slow provider may be delaying the route comparison; retry when the provider is available.");
+          failJob("The route builder did not finish within 8 minutes. A slow provider may be delaying the route comparison; retry when the provider is available.");
           return;
         }
 
@@ -379,11 +379,21 @@ export default function Home() {
               setJobInfo(null);
               setApiOnline(true);
               setIsLoading(false);
-              if (checkedRoutes.length > 1) {
-                setRouteCandidates(checkedRoutes);
+              const orderedRoutes = [...checkedRoutes].sort((a, b) => {
+                const feasibilityOrder = Number(Boolean(b.plan?.feasible)) - Number(Boolean(a.plan?.feasible));
+                if (feasibilityOrder !== 0) return feasibilityOrder;
+                const aStationCount = a.plan?.corridor_stations?.length ?? a.station_count;
+                const bStationCount = b.plan?.corridor_stations?.length ?? b.station_count;
+                return bStationCount - aStationCount;
+              });
+              if (orderedRoutes.length > 1) {
+                const previewRoute = orderedRoutes[0];
+                setParams((prev) => ({ ...prev, snapshotId: previewRoute.snapshot_id }));
+                setPlan(previewRoute.plan);
+                setRouteCandidates(orderedRoutes);
                 setActiveTab("plan");
               } else {
-                const onlyRoute = checkedRoutes[0];
+                const onlyRoute = orderedRoutes[0];
                 setParams((prev) => ({ ...prev, snapshotId: onlyRoute.snapshot_id }));
                 if (onlyRoute.plan) {
                   setPlan(onlyRoute.plan);
@@ -449,6 +459,15 @@ export default function Home() {
 
   const handleChooseRoute = useCallback((candidate: RouteAlternativeCandidate) => {
     if (!candidate.plan?.feasible) return;
+    setParams((prev) => ({ ...prev, snapshotId: candidate.snapshot_id }));
+    setPlan(candidate.plan);
+    setRouteCandidates(null);
+    setErrorMessage(null);
+    setActiveTab("plan");
+  }, []);
+
+  const handlePreviewRoute = useCallback((candidate: RouteAlternativeCandidate) => {
+    if (!candidate.plan) return;
     setParams((prev) => ({ ...prev, snapshotId: candidate.snapshot_id }));
     setPlan(candidate.plan);
     setRouteCandidates(null);
@@ -635,6 +654,7 @@ export default function Home() {
             <RouteAlternativesModal
               routes={routeCandidates}
               onSelect={handleChooseRoute}
+              onPreview={handlePreviewRoute}
               onClose={handleCloseRouteChoices}
             />
           )}

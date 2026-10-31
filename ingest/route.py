@@ -81,7 +81,7 @@ class OSRMClient:
 
         url = (
             f"{self.base_url}/route/v1/driving/{lon1},{lat1};{lon2},{lat2}"
-            f"?overview=full&geometries=geojson&alternatives={'true' if max_routes > 1 else 'false'}"
+            f"?overview=full&geometries=geojson&alternatives={max_routes - 1 if max_routes > 1 else 'false'}"
         )
 
         headers = {"User-Agent": "RouteEV-TripPlanner/1.0"}

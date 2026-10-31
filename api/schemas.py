@@ -145,7 +145,7 @@ class RouteBuildRequest(BaseModel):
     destination: LocationSpec
     use_synthetic: bool = False
     force_refresh: bool = False
-    max_routes: int = Field(2, ge=1, le=3, description="Maximum road alternatives to build and compare")
+    max_routes: int = Field(3, ge=1, le=3, description="Maximum road routes to build and compare")
 
 
 class BuiltRouteOption(BaseModel):

@@ -359,7 +359,7 @@ This section maps the repository files to their responsibilities. Start with `ap
 
 1. The browser loads vehicle presets from `GET /cars` and sends place searches to `GET /geocode`.
 2. The user selects a saved route or submits origin and destination. For a new route, the UI calls `POST /routes/build` and polls `GET /jobs/{job_id}`.
-3. The backend asks OSRM for up to two driving routes, collects route geometry, elevation, and station candidates for each through `ingest/`, then stores the corridor snapshots.
-4. The UI calls `POST /plan` for each snapshot using the selected EV settings. It presents the alternatives with feasibility, distance, drive time, and charging-stop information so the user can choose a viable route.
+3. The backend asks OSRM for up to three driving route candidates, collects route geometry, elevation, and station candidates for each through `ingest/`, then stores the corridor snapshots. OSRM may return fewer alternatives than requested.
+4. The UI calls `POST /plan` for each snapshot using the selected EV settings. It presents the alternatives with feasibility, distance, drive time, and charging-stop information. EV-feasible routes can be chosen for navigation; routes without enough charging coverage can still be previewed on the map and are labeled as not EV-feasible.
 5. `core/` builds candidate charger transitions, simulates energy and charging, and finds an itinerary balancing travel time and dwell discomfort. The API returns a plan for the map, stop list, and SoC/elevation profile.
 

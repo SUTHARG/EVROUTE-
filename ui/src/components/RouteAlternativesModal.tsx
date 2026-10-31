@@ -8,12 +8,14 @@ import { formatDuration } from "../utils/format";
 interface RouteAlternativesModalProps {
   routes: RouteAlternativeCandidate[];
   onSelect: (route: RouteAlternativeCandidate) => void;
+  onPreview: (route: RouteAlternativeCandidate) => void;
   onClose: () => void;
 }
 
 export const RouteAlternativesModal: React.FC<RouteAlternativesModalProps> = ({
   routes,
   onSelect,
+  onPreview,
   onClose,
 }) => {
   const hasFeasibleRoute = routes.some((route) => route.plan?.feasible);
@@ -36,7 +38,7 @@ export const RouteAlternativesModal: React.FC<RouteAlternativesModalProps> = ({
                 Compare route options
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                Each route was checked with your selected EV and charge settings. Choose a route marked EV-feasible.
+                Each route was checked with your selected EV and charge settings. Choose an EV-feasible route, or preview another road path.
               </p>
             </div>
           </div>
@@ -93,14 +95,24 @@ export const RouteAlternativesModal: React.FC<RouteAlternativesModalProps> = ({
                   </p>
                 )}
 
-                <button
-                  type="button"
-                  disabled={!feasible}
-                  onClick={() => onSelect(route)}
-                  className="mt-4 w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  {feasible ? "Choose this route" : "Unavailable with current settings"}
-                </button>
+                {feasible ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelect(route)}
+                    className="mt-4 w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  >
+                    Choose this route
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!route.plan}
+                    onClick={() => onPreview(route)}
+                    className="mt-4 w-full rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {route.plan ? "Preview road route (not EV-feasible)" : "Route preview unavailable"}
+                  </button>
+                )}
               </article>
             );
           })}
@@ -110,7 +122,7 @@ export const RouteAlternativesModal: React.FC<RouteAlternativesModalProps> = ({
           <p className="text-xs text-slate-500">
             {hasFeasibleRoute
               ? "Selecting a route will show its map and charging-stop plan."
-              : "No option is feasible with the current vehicle and battery settings. Try another EV or starting charge."}
+              : "No option is EV-feasible with these settings. You can preview a road route, or try another EV or starting charge."}
           </p>
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Close
