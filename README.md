@@ -238,8 +238,8 @@ This section maps the repository files to their responsibilities. Start with `ap
 
 | File | Purpose |
 |---|---|
-| `api/main.py` | Creates the FastAPI app, runs startup loading, configures CORS, and implements health, vehicle, snapshot, geocoding, route-build, job-status, planning, Pareto, benchmark, and station-refresh endpoints. |
-| `api/schemas.py` | Pydantic request and response models that define the HTTP contract between the frontend and backend. |
+| `api/main.py` | Creates the FastAPI app, runs startup loading, configures CORS, and implements health, vehicle, snapshot, geocoding, multi-route build, job-status, planning, Pareto, benchmark, and station-refresh endpoints. |
+| `api/schemas.py` | Pydantic request and response models that define the HTTP contract, including summaries of built route alternatives. |
 | `api/snapshot_store.py` | Loads saved corridor JSON files into the in-memory snapshot cache and resolves snapshot IDs for API handlers. |
 | `api/__init__.py` | Marks `api` as a Python package. |
 
@@ -267,7 +267,7 @@ This section maps the repository files to their responsibilities. Start with `ap
 | File | Purpose |
 |---|---|
 | `ingest/build_snapshot.py` | End-to-end corridor builder: obtains route geometry, road nodes, elevation, and charging stations, then assembles a reusable snapshot. Also provides a CLI. |
-| `ingest/route.py` | OSRM client for road routes and spur detours, with configurable service URL and disk caching. |
+| `ingest/route.py` | OSRM client for primary and alternative road routes plus spur detours, with configurable service URL and disk caching. |
 | `ingest/elevation.py` | Samples elevation data, smooths noisy profiles, and calculates route ascent/descent inputs. |
 | `ingest/geocode.py` | Nominatim geocoding and autocomplete search with throttling, disk cache, and offline fallbacks. |
 | `ingest/station_providers.py` | Common station-provider interface and clients for verified CSV, Google Places, Open Charge Map, and Overpass. Normalizes connector data, merges records, and deduplicates nearby results. |
@@ -330,7 +330,7 @@ This section maps the repository files to their responsibilities. Start with `ap
 
 | File or path | Purpose |
 |---|---|
-| `ui/src/app/page.tsx` | Main client page. Coordinates trip inputs, backend requests, route-build job polling, selected plan, errors, tabs, and map state. |
+| `ui/src/app/page.tsx` | Main client page. Coordinates trip inputs, backend requests, route-build job polling, EV feasibility checks across route alternatives, the selected plan, errors, tabs, and map state. |
 | `ui/src/app/layout.tsx` | Root Next.js layout and page metadata. |
 | `ui/src/app/globals.css` | Global styles, Tailwind layers, and application-wide layout rules. |
 | `ui/src/app/favicon.ico` | Browser tab icon. |
@@ -339,6 +339,7 @@ This section maps the repository files to their responsibilities. Start with `ap
 | `ui/src/components/RouteMap.tsx` | Leaflet map, route lines, charging-station markers and details, focus behavior, and optional Mapbox Streets tiles. |
 | `ui/src/components/RouteProgressModal.tsx` | Progress display for asynchronous corridor-building jobs. |
 | `ui/src/components/BackendErrorModal.tsx` | API connection and planning error display with retry/dismiss actions. |
+| `ui/src/components/RouteAlternativesModal.tsx` | Compares built road alternatives by distance, drive time, corridor-station count, charging stops, and EV feasibility; lets the user select a feasible route. |
 | `ui/src/components/RouteSocProfileDrawer.tsx` | Elevation and battery SoC profile visualization for the planned route. |
 | `ui/src/config/api.ts` | Resolves the API base URL from `NEXT_PUBLIC_API_BASE_URL` or its fallback. |
 | `ui/src/features/trip/api.ts` | Typed frontend calls for vehicles, trip planning, route building, job polling, and station refresh. |
@@ -358,7 +359,7 @@ This section maps the repository files to their responsibilities. Start with `ap
 
 1. The browser loads vehicle presets from `GET /cars` and sends place searches to `GET /geocode`.
 2. The user selects a saved route or submits origin and destination. For a new route, the UI calls `POST /routes/build` and polls `GET /jobs/{job_id}`.
-3. The backend collects route geometry, elevation, and station candidates through `ingest/`, then stores the completed corridor in the snapshot cache.
-4. The UI submits the chosen snapshot and EV settings to `POST /plan`.
+3. The backend asks OSRM for up to two driving routes, collects route geometry, elevation, and station candidates for each through `ingest/`, then stores the corridor snapshots.
+4. The UI calls `POST /plan` for each snapshot using the selected EV settings. It presents the alternatives with feasibility, distance, drive time, and charging-stop information so the user can choose a viable route.
 5. `core/` builds candidate charger transitions, simulates energy and charging, and finds an itinerary balancing travel time and dwell discomfort. The API returns a plan for the map, stop list, and SoC/elevation profile.
 

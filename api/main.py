@@ -23,6 +23,7 @@ from api.schemas import (
     GeocodeCandidate,
     HealthResponse,
     JobStatusResponse,
+    BuiltRouteOption,
     ParetoRequest,
     ParetoResponse,
     PlanRequest,
@@ -238,32 +239,80 @@ def build_route_job(req: RouteBuildRequest) -> JobStatusResponse:
         "percent": 0,
         "error_message": None,
         "snapshot_id": None,
+        "route_options": [],
     }
 
     def _worker():
-        def _update(step: str, pct: int):
-            _JOBS[job_id]["progress_step"] = step
-            _JOBS[job_id]["percent"] = pct
-
         try:
-            snapshot = build_corridor_from_coords(
-                origin_lat=req.origin.lat,
-                origin_lon=req.origin.lon,
-                origin_label=req.origin.label,
-                dest_lat=req.destination.lat,
-                dest_lon=req.destination.lon,
-                dest_label=req.destination.label,
-                use_synthetic=req.use_synthetic,
-                progress_callback=_update,
-                force_refresh=req.force_refresh,
-            )
-            _SNAPSHOT_CACHE[snapshot.id] = snapshot
-            if not req.use_synthetic:
-                _LIVE_BUILT_SNAPSHOTS.add(snapshot.id)
+            if req.use_synthetic:
+                route_data_options = [None]
+            else:
+                from ingest.route import OSRMClient
+
+                route_data_options = OSRMClient().get_routes(
+                    (req.origin.lat, req.origin.lon),
+                    (req.destination.lat, req.destination.lon),
+                    max_routes=req.max_routes,
+                )
+            if not route_data_options:
+                raise ValueError("The routing provider returned no route alternatives.")
+
+            built_options: list[BuiltRouteOption] = []
+            total_options = len(route_data_options)
+            for route_index, route_data in enumerate(route_data_options):
+                def _update(step: str, pct: int, index: int = route_index):
+                    overall_pct = int(((index + pct / 100.0) / total_options) * 100)
+                    _JOBS[job_id]["progress_step"] = (
+                        f"Building route {index + 1} of {total_options}: {step}"
+                    )
+                    _JOBS[job_id]["percent"] = overall_pct
+
+                try:
+                    snapshot = build_corridor_from_coords(
+                        origin_lat=req.origin.lat,
+                        origin_lon=req.origin.lon,
+                        origin_label=req.origin.label,
+                        dest_lat=req.destination.lat,
+                        dest_lon=req.destination.lon,
+                        dest_label=req.destination.label,
+                        use_synthetic=req.use_synthetic,
+                        progress_callback=_update,
+                        force_refresh=req.force_refresh,
+                        route_data_override=route_data,
+                        route_variant_index=route_index,
+                    )
+                except Exception as route_exc:  # noqa: BLE001
+                    _JOBS[job_id]["progress_step"] = (
+                        f"Skipping route {route_index + 1}: {route_exc}"
+                    )
+                    continue
+                _SNAPSHOT_CACHE[snapshot.id] = snapshot
+                if not req.use_synthetic:
+                    _LIVE_BUILT_SNAPSHOTS.add(snapshot.id)
+                distance_km = float(snapshot.metadata.get("total_distance_km", 0.0))
+                driving_time_min = sum(edge.time_s for edge in snapshot.edges) / 60.0
+                built_options.append(
+                    BuiltRouteOption(
+                        route_number=route_index + 1,
+                        snapshot_id=snapshot.id,
+                        distance_km=round(distance_km, 1),
+                        driving_time_min=round(driving_time_min, 1),
+                        station_count=len(snapshot.stations),
+                    )
+                )
+                _JOBS[job_id]["route_options"] = [
+                    option.model_dump() for option in built_options
+                ]
+                if _JOBS[job_id]["snapshot_id"] is None:
+                    _JOBS[job_id]["snapshot_id"] = snapshot.id
+
+            if not built_options:
+                raise ValueError("Unable to build a charging corridor for any returned road route.")
             _JOBS[job_id]["status"] = "completed"
             _JOBS[job_id]["percent"] = 100
-            _JOBS[job_id]["progress_step"] = "Corridor snapshot ready"
-            _JOBS[job_id]["snapshot_id"] = snapshot.id
+            _JOBS[job_id]["progress_step"] = (
+                f"{len(built_options)} route option(s) ready for EV feasibility comparison"
+            )
         except Exception as exc:  # noqa: BLE001
             _JOBS[job_id]["status"] = "failed"
             _JOBS[job_id]["error_message"] = str(exc)

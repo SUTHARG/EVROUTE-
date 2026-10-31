@@ -7,7 +7,8 @@ import { Sidebar } from "@/components/Sidebar";
 import type { AppTab, LocationWaypoint, MobileSheetState, TripParams, VehicleOption } from "@/features/trip/model/types";
 import { BackendErrorModal } from "@/components/BackendErrorModal";
 import { RouteProgressModal, JobProgressInfo } from "@/components/RouteProgressModal";
-import { TripPlan, ChargingStopInfo, VehicleOptionItem } from "@/types/plan";
+import { RouteAlternativesModal } from "@/components/RouteAlternativesModal";
+import { TripPlan, ChargingStopInfo, VehicleOptionItem, RouteAlternativeCandidate, RouteAlternativeSummary } from "@/types/plan";
 import { API_BASE_URL } from "@/config/api";
 import {
   buildCorridor,
@@ -65,6 +66,7 @@ export default function Home() {
 
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [plan, setPlan] = useState<TripPlan | null>(null);
+  const [routeCandidates, setRouteCandidates] = useState<RouteAlternativeCandidate[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -205,6 +207,9 @@ export default function Home() {
     isBuildingRouteRef.current = true;
     setIsLoading(true);
     setErrorMessage(null);
+    setRouteCandidates(null);
+    setPlan(null);
+    ++activePlanReqIdRef.current;
 
     try {
       const buildResp = await buildCorridor({
@@ -212,6 +217,7 @@ export default function Home() {
           destination: { lat: dstLoc.lat, lon: dstLoc.lon, label: dstLoc.label },
           use_synthetic: false,
           force_refresh: forceRefresh,
+          max_routes: 2,
       });
 
       if (!buildResp.ok) {
@@ -246,7 +252,7 @@ export default function Home() {
       let isPollInFlight = false;
       let consecutiveFailures = 0;
       const MAX_CONSECUTIVE_FAILURES = 5;
-      const MAX_POLL_TIMEOUT_MS = 240000; // Allow long corridors to finish public-provider requests.
+      const MAX_POLL_TIMEOUT_MS = 360000; // Compare up to two corridors and their station data.
       const startTime = Date.now();
 
       const cleanup = () => {
@@ -280,7 +286,7 @@ export default function Home() {
 
         // Check overall timeout
         if (Date.now() - startTime > MAX_POLL_TIMEOUT_MS) {
-          failJob("The route builder did not finish within 4 minutes. A slow provider may be delaying the build; retry when the provider is available.");
+          failJob("The route builder did not finish within 6 minutes. A slow provider may be delaying the route comparison; retry when the provider is available.");
           return;
         }
 
@@ -309,12 +315,83 @@ export default function Home() {
             if (job.status === "completed") {
               cleanup();
               isBuildingRouteRef.current = false;
-              const newSnapId = job.snapshot_id;
-              setParams((prev) => ({ ...prev, snapshotId: newSnapId }));
-              // The route-build overlay covers the map. Close it as soon as geometry
-              // is ready so the user can see the corridor while the trip is planned.
+              const summaries: RouteAlternativeSummary[] = Array.isArray(job.route_options)
+                ? job.route_options
+                : [];
+              if (summaries.length === 0 && job.snapshot_id) {
+                summaries.push({
+                  route_number: 1,
+                  snapshot_id: job.snapshot_id,
+                  distance_km: 0,
+                  driving_time_min: 0,
+                  station_count: 0,
+                });
+              }
+              if (summaries.length === 0) {
+                setJobInfo(null);
+                setIsLoading(false);
+                setErrorMessage("The route builder completed without returning a route option. Please retry.");
+                return;
+              }
+
+              setJobInfo({
+                jobId: job.job_id,
+                status: "running",
+                progressStep: "Checking EV range and charging feasibility for each route...",
+                percent: 96,
+                originLabel: srcLoc.label,
+                destLabel: dstLoc.label,
+              });
+              const compareReqId = ++activePlanReqIdRef.current;
+              const checkedRoutes = await Promise.all(summaries.map(async (route) => {
+                try {
+                  const planResp = await requestTripPlan({
+                    snapshot_id: route.snapshot_id,
+                    car_id: params.carId,
+                    start_soc: params.startSoc,
+                    reserve_soc: params.reserveSoc,
+                    stop_threshold_soc: params.stopThresholdSoc,
+                    comfort_weight_lambda: params.comfortLambda,
+                    K: params.K,
+                    enable_filter: params.enableFilter,
+                    from_saved_snapshot: false,
+                  });
+                  if (!planResp.ok) {
+                    const errorBody = await planResp.json().catch(() => ({}));
+                    return {
+                      ...route,
+                      plan: null,
+                      error_message: errorBody.detail || `Planning failed (HTTP ${planResp.status})`,
+                    };
+                  }
+                  const routePlan: TripPlan = await planResp.json();
+                  return { ...route, plan: routePlan };
+                } catch (routeError: unknown) {
+                  return {
+                    ...route,
+                    plan: null,
+                    error_message: describeError(routeError, "Could not check this route."),
+                  };
+                }
+              }));
+              if (activePlanReqIdRef.current !== compareReqId) return;
+
               setJobInfo(null);
-              await fetchPlan(newSnapId);
+              setApiOnline(true);
+              setIsLoading(false);
+              if (checkedRoutes.length > 1) {
+                setRouteCandidates(checkedRoutes);
+                setActiveTab("plan");
+              } else {
+                const onlyRoute = checkedRoutes[0];
+                setParams((prev) => ({ ...prev, snapshotId: onlyRoute.snapshot_id }));
+                if (onlyRoute.plan) {
+                  setPlan(onlyRoute.plan);
+                  setActiveTab("plan");
+                } else {
+                  setErrorMessage(onlyRoute.error_message || "Could not plan this route.");
+                }
+              }
               return;
             } else if (job.status === "failed") {
               cleanup();
@@ -354,7 +431,7 @@ export default function Home() {
       setIsLoading(false);
       setErrorMessage(`Route build failed to start: ${describeError(err, "Network error")}`);
     }
-  }, [fetchPlan]);
+  }, [params]);
 
   // Manual refresh stations handler
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -369,6 +446,25 @@ export default function Home() {
       setIsRefreshing(false);
     }
   }, [params.snapshotId, handleBuildAndPlanRoute, origin, destination]);
+
+  const handleChooseRoute = useCallback((candidate: RouteAlternativeCandidate) => {
+    if (!candidate.plan?.feasible) return;
+    setParams((prev) => ({ ...prev, snapshotId: candidate.snapshot_id }));
+    setPlan(candidate.plan);
+    setRouteCandidates(null);
+    setErrorMessage(null);
+    setActiveTab("plan");
+  }, []);
+
+  const handleCloseRouteChoices = useCallback(() => {
+    const firstPlan = routeCandidates?.find((candidate) => candidate.plan)?.plan || null;
+    if (firstPlan) {
+      setParams((prev) => ({ ...prev, snapshotId: firstPlan.snapshot_id || prev.snapshotId }));
+      setPlan(firstPlan);
+      setActiveTab("plan");
+    }
+    setRouteCandidates(null);
+  }, [routeCandidates]);
 
   // Initial load only fetches vehicle options. Route searches start only after an
   // explicit user action, so a page refresh never silently builds a default route.
@@ -533,6 +629,13 @@ export default function Home() {
               }}
               onClose={() => setErrorMessage(null)}
               isLoading={isLoading}
+            />
+          )}
+          {routeCandidates && routeCandidates.length > 1 && (
+            <RouteAlternativesModal
+              routes={routeCandidates}
+              onSelect={handleChooseRoute}
+              onClose={handleCloseRouteChoices}
             />
           )}
         </main>

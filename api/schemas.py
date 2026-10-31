@@ -145,6 +145,17 @@ class RouteBuildRequest(BaseModel):
     destination: LocationSpec
     use_synthetic: bool = False
     force_refresh: bool = False
+    max_routes: int = Field(2, ge=1, le=3, description="Maximum road alternatives to build and compare")
+
+
+class BuiltRouteOption(BaseModel):
+    """Summary of one built road-route candidate."""
+
+    route_number: int
+    snapshot_id: str
+    distance_km: float
+    driving_time_min: float
+    station_count: int
 
 
 class JobStatusResponse(BaseModel):
@@ -156,6 +167,7 @@ class JobStatusResponse(BaseModel):
     percent: int = 0
     error_message: str | None = None
     snapshot_id: str | None = None
+    route_options: list[BuiltRouteOption] = Field(default_factory=list)
 
 
 

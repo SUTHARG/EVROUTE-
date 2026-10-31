@@ -633,6 +633,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="text-[11px] text-gray-600 bg-white p-2.5 rounded-lg border border-red-200">
                   Tip: Increase starting battery SoC or choose a longer-range vehicle with higher battery capacity.
                 </div>
+                <button
+                  type="button"
+                  onClick={() => onBuildAndPlanRoute(origin, destination)}
+                  disabled={isLoading || !canPlanRoute}
+                  className="w-full rounded-lg bg-emerald-600 px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  Find alternative EV routes
+                </button>
               </div>
             ) : (
               <>

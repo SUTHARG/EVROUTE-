@@ -17,6 +17,7 @@ export interface RouteBuildRequest {
   destination: { lat: number; lon: number; label: string };
   use_synthetic: boolean;
   force_refresh: boolean;
+  max_routes: number;
 }
 
 const endpoint = (path: string) => `${API_BASE_URL}${path}`;

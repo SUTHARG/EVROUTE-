@@ -34,31 +34,54 @@ class OSRMClient:
         alternatives: bool = True,
         allow_network: bool = True,
     ) -> dict[str, Any]:
-        """Fetch primary driving route and alternatives from OSRM.
+        """Fetch the primary driving route, preserving the legacy single-route API."""
+        routes = self.get_routes(
+            start_coord,
+            end_coord,
+            max_routes=2 if alternatives else 1,
+            allow_network=allow_network,
+        )
+        if not routes:
+            raise ValueError("OSRM returned no routes.")
+        result = dict(routes[0])
+        result["alternatives_count"] = len(routes) - 1
+        return result
+
+    def get_routes(
+        self,
+        start_coord: tuple[float, float],
+        end_coord: tuple[float, float],
+        max_routes: int = 2,
+        allow_network: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Fetch up to ``max_routes`` distinct driving routes from OSRM.
 
         Args:
             start_coord: (lat, lon) of source.
             end_coord: (lat, lon) of destination.
-            alternatives: Request alternative paths.
+            max_routes: Maximum route candidates to return (1-3).
             allow_network: Allow live HTTP request if not cached.
 
         Returns:
-            Dictionary with distance_m, duration_s, and coordinates [(lat, lon), ...].
+            Route dictionaries with distance_m, duration_s, and coordinates [(lat, lon), ...].
         """
+        if not 1 <= max_routes <= 3:
+            raise ValueError("max_routes must be between 1 and 3.")
+
         lat1, lon1 = start_coord
         lat2, lon2 = end_coord
-        cache_key = f"{lat1:.5f},{lon1:.5f}_{lat2:.5f},{lon2:.5f}_alt={alternatives}"
+        cache_key = f"{lat1:.5f},{lon1:.5f}_{lat2:.5f},{lon2:.5f}_routes={max_routes}_v2"
 
         cached = self.cache.get(cache_key)
         if cached:
-            return cached
+            return cached[:max_routes]
 
         if not allow_network:
             raise ValueError(f"OSRM route for {cache_key} not in cache and network is disabled.")
 
         url = (
             f"{self.base_url}/route/v1/driving/{lon1},{lat1};{lon2},{lat2}"
-            f"?overview=full&geometries=geojson&alternatives={'true' if alternatives else 'false'}"
+            f"?overview=full&geometries=geojson&alternatives={'true' if max_routes > 1 else 'false'}"
         )
 
         headers = {"User-Agent": "RouteEV-TripPlanner/1.0"}
@@ -69,19 +92,19 @@ class OSRMClient:
         if data.get("code") != "Ok" or not data.get("routes"):
             raise ValueError(f"OSRM returned error code: {data.get('code')}")
 
-        primary_route = data["routes"][0]
-        # OSRM geojson coordinates are [lon, lat]
-        coords = [(pt[1], pt[0]) for pt in primary_route["geometry"]["coordinates"]]
+        results: list[dict[str, Any]] = []
+        for route_index, route in enumerate(data["routes"][:max_routes]):
+            # OSRM geojson coordinates are [lon, lat].
+            coords = [(pt[1], pt[0]) for pt in route["geometry"]["coordinates"]]
+            results.append({
+                "distance_m": route["distance"],
+                "duration_s": route["duration"],
+                "coordinates": coords,
+                "route_index": route_index,
+            })
 
-        result = {
-            "distance_m": primary_route["distance"],
-            "duration_s": primary_route["duration"],
-            "coordinates": coords,
-            "alternatives_count": len(data["routes"]) - 1,
-        }
-
-        self.cache.set(cache_key, result)
-        return result
+        self.cache.set(cache_key, results)
+        return results
 
 
 def compute_spur_detour(

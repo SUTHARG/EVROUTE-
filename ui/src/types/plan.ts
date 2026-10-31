@@ -122,6 +122,19 @@ export interface TripPlan {
   };
 }
 
+export interface RouteAlternativeSummary {
+  route_number: number;
+  snapshot_id: string;
+  distance_km: number;
+  driving_time_min: number;
+  station_count: number;
+}
+
+export interface RouteAlternativeCandidate extends RouteAlternativeSummary {
+  plan: TripPlan | null;
+  error_message?: string;
+}
+
 
 export interface VehicleOptionItem {
   id: string;

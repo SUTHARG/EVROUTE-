@@ -38,6 +38,8 @@ def build_corridor_from_coords(
     output_dir: Path | None = None,
     buffer_km: float = 8.0,
     force_refresh: bool = False,
+    route_data_override: dict[str, Any] | None = None,
+    route_variant_index: int = 0,
 ) -> CorridorSnapshot:
     """Build a complete CorridorSnapshot for coordinate waypoints with progress reporting.
 
@@ -55,6 +57,8 @@ def build_corridor_from_coords(
     clean_src = origin_label.strip() or f"{origin_lat:.2f},{origin_lon:.2f}"
     clean_dst = dest_label.strip() or f"{dest_lat:.2f},{dest_lon:.2f}"
     coord_key = f"corridor_{round(origin_lat, 3)}_{round(origin_lon, 3)}_{round(dest_lat, 3)}_{round(dest_lon, 3)}"
+    if route_variant_index > 0:
+        coord_key += f"_alt{route_variant_index + 1}"
     snapshots_dir = output_dir or Path("data/snapshots")
 
     # Fast-path 0: Check disk cache only if not forcing fresh live build
@@ -94,8 +98,16 @@ def build_corridor_from_coords(
     if progress_callback:
         progress_callback("Fetching OSRM road geometry...", 20)
 
-    osrm = OSRMClient()
-    route_data = osrm.get_route((origin_lat, origin_lon), (dest_lat, dest_lon), alternatives=True, allow_network=allow_network)
+    if route_data_override is None:
+        osrm = OSRMClient()
+        route_data = osrm.get_route(
+            (origin_lat, origin_lon),
+            (dest_lat, dest_lon),
+            alternatives=True,
+            allow_network=allow_network,
+        )
+    else:
+        route_data = route_data_override
     coords = route_data["coordinates"]
     if len(coords) < 2:
         raise ValueError("OSRM did not return valid driving route coordinates.")
@@ -260,6 +272,7 @@ def build_corridor_from_coords(
         "num_road_segments": len(edges),
         "num_stations": len(stations),
         "provider_stats": provider_stats,
+        "route_variant": route_variant_index + 1,
     }
 
     snapshot = CorridorSnapshot(

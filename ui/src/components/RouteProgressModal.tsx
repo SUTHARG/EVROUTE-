@@ -20,7 +20,7 @@ interface RouteProgressModalProps {
 }
 
 const PIPELINE_STEPS = [
-  { id: "osrm", label: "Querying OSRM driving route with road geometry", minPct: 10 },
+  { id: "osrm", label: "Querying OSRM for road-route alternatives", minPct: 10 },
   { id: "stations", label: "Ingesting corridor charging stations (OCM & Overpass)", minPct: 35 },
   { id: "elevation", label: "Sampling and smoothing route elevation profile", minPct: 60 },
   { id: "amenities", label: "Populating station amenities and comfort scores", minPct: 80 },
